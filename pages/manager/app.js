@@ -246,7 +246,7 @@ function makeImageCard(group, filename) {
 
 async function loadImageData(group, filename) {
   const result = unwrap(await bridge.apiGet(
-    `groups/${encodeURIComponent(group)}/images/data/${encodeURIComponent(filename)}`
+    `groups/${encodeURIComponent(group)}/images/data/${filename}`
   ));
   return `data:${result.mime_type || "image/png"};base64,${result.content_base64}`;
 }

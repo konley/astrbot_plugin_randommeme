@@ -120,42 +120,6 @@ def _install_stubs() -> None:
 
     astrbot_path.get_astrbot_plugin_data_path = _get_plugin_data_path
 
-    api_web = types.ModuleType("astrbot.api.web")
-
-    def _json_response(payload=None, status_code=200, **kw):
-        return ("json", payload, status_code)
-
-    def _error_response(msg: str, status_code: int = 500, **kw):
-        return ("error", msg, status_code)
-
-    def _file_response(path, filename=None, content_type=None, **kw):
-        return ("file", str(path), filename, content_type)
-
-    class _WebRequest:
-        method = "GET"
-        path = ""
-        plugin_name = None
-        username = None
-        headers: dict = {}
-        cookies: dict = {}
-
-        async def body(self) -> bytes:
-            return b""
-
-        async def json(self, default=None):
-            return default or {}
-
-        async def form(self):
-            return {}
-
-        async def files(self):
-            return {}
-
-    api_web.json_response = _json_response
-    api_web.error_response = _error_response
-    api_web.file_response = _file_response
-    api_web.request = _WebRequest()
-
     api_pkg = types.ModuleType("astrbot.api")
     api_pkg.__is_stub__ = True
     sys.modules["astrbot"] = api_pkg
@@ -163,7 +127,6 @@ def _install_stubs() -> None:
     sys.modules["astrbot.api.event"] = api_event
     sys.modules["astrbot.api.provider"] = api_provider
     sys.modules["astrbot.api.star"] = api_star
-    sys.modules["astrbot.api.web"] = api_web
     sys.modules["astrbot.core"] = core
     sys.modules["astrbot.core.message"] = core_message
     sys.modules["astrbot.core.message.components"] = core_components

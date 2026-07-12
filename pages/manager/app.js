@@ -245,10 +245,10 @@ function makeImageCard(group, filename) {
 }
 
 async function loadImageData(group, filename) {
-  const result = unwrap(await bridge.apiGet(
-    `groups/${encodeURIComponent(group)}/images/data/${filename}`
-  ));
-  return `data:${result.mime_type || "image/png"};base64,${result.content_base64}`;
+  const result = await bridge.apiGet(
+    `images/data?name=${encodeURIComponent(group)}&filename=${encodeURIComponent(filename)}`
+  );
+  return result.data_url;
 }
 
 function makeTextPreview(text) {

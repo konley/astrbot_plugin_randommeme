@@ -156,10 +156,10 @@ class WebApiMixin:
             "Delete images",
         )
         self._register_webui_api(
-            "groups/<name>/images/data/<filename>",
+            "images/data",
             self._api_image_data,
             ["GET"],
-            "Get image as base64 data URL",
+            "Get image as base64 data URL (query: name, filename)",
         )
         self._register_webui_api(
             "groups/<name>/images/<path:filename>",
@@ -315,8 +315,10 @@ class WebApiMixin:
             return jsonify({"status": "error", "message": str(exc)}), 400
         return self._data({"removed": removed})
 
-    async def _api_image_data(self, name: str, filename: str = ""):
-        """Return image as base64 JSON for sandbox-safe preview."""
+    async def _api_image_data(self):
+        """Return image as full data URL (meme_manager pattern — query params)."""
+        name = request.args.get("name") or ""
+        filename = request.args.get("filename") or ""
         g, err = self._require_group(self.manager, name)
         if err is not None:
             return err
@@ -332,10 +334,9 @@ class WebApiMixin:
             return jsonify({"status": "error", "message": "文件不存在"}), 404
         ctype, _ = mimetypes.guess_type(target.name)
         payload = await asyncio.to_thread(target.read_bytes)
-        return self._data({
-            "filename": filename,
-            "mime_type": ctype or "application/octet-stream",
-            "content_base64": base64.b64encode(payload).decode("ascii"),
+        encoded = base64.b64encode(payload).decode("ascii")
+        return jsonify({
+            "data_url": f"data:{ctype or 'image/png'};base64,{encoded}",
         })
 
     async def _api_fetch_image(self, name: str, filename: str = ""):

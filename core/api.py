@@ -273,19 +273,27 @@ def register_web_apis(context, manager: MemeManager) -> None:
 
         return wrapper
 
+    # ---- merged handlers to avoid duplicate route registration ----
+
+    async def handle_groups(manager: MemeManager):
+        if request.method == "GET":
+            return await list_groups(manager)
+        return await create_group(manager)
+
+    async def handle_group_images(manager: MemeManager, name: str):
+        if request.method == "GET":
+            return await list_images(manager, name)
+        return await upload_images(manager, name)
+
+    # ---------------------------------------------------------------
+
     pairs = [
         # ----- groups -----
         (
             f"{PLUGIN_ROUTE_PREFIX}/groups",
-            _bind_no_param(list_groups),
-            ["GET"],
-            "List groups",
-        ),
-        (
-            f"{PLUGIN_ROUTE_PREFIX}/groups",
-            _bind_no_param(create_group),
-            ["POST"],
-            "Create group",
+            _bind_no_param(handle_groups),
+            ["GET", "POST"],
+            "List / Create groups",
         ),
         (
             f"{PLUGIN_ROUTE_PREFIX}/groups/<name>",
@@ -308,15 +316,9 @@ def register_web_apis(context, manager: MemeManager) -> None:
         # ----- images -----
         (
             f"{PLUGIN_ROUTE_PREFIX}/groups/<name>/images",
-            _bind(list_images),
-            ["GET"],
-            "List images",
-        ),
-        (
-            f"{PLUGIN_ROUTE_PREFIX}/groups/<name>/images",
-            _bind(upload_images),
-            ["POST"],
-            "Upload images",
+            _bind(handle_group_images),
+            ["GET", "POST"],
+            "List / Upload images",
         ),
         (
             f"{PLUGIN_ROUTE_PREFIX}/groups/<name>/images/delete",

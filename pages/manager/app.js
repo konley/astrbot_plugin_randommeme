@@ -245,9 +245,10 @@ function makeImageCard(group, filename) {
 }
 
 async function loadImageData(group, filename) {
-  const result = await bridge.apiGet(
-    `images/data?name=${encodeURIComponent(group)}&filename=${encodeURIComponent(filename)}`
-  );
+  const result = await bridge.apiGet("images/data", {
+    name: group,
+    filename: filename,
+  });
   return result.data_url;
 }
 

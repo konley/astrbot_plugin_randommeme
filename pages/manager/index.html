@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>随机表情包 - 管理</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>随机表情包</h1>
+        <p class="subtitle">管理组别、上传图片、查看统计。</p>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab" data-tab="groups" role="tab" aria-selected="true">组别管理</button>
+        <button class="tab" data-tab="images" role="tab" aria-selected="false">图片管理</button>
+        <button class="tab" data-tab="settings" role="tab" aria-selected="false">全局设置</button>
+        <button class="tab" data-tab="stats" role="tab" aria-selected="false">统计</button>
+      </nav>
+
+      <main>
+        <!-- ============== Groups tab ============== -->
+        <section class="panel" id="tab-groups" data-panel="groups">
+          <div class="actions-row">
+            <button class="btn primary" id="btn-new-group">新建组别</button>
+            <button class="btn" id="btn-refresh-groups">刷新</button>
+            <button class="btn danger" id="btn-reset-all">重置全部抽取序列</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="groups-table">
+              <thead>
+                <tr>
+                  <th>组别</th>
+                  <th>别名</th>
+                  <th>图片</th>
+                  <th>状态</th>
+                  <th>需唤醒</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="empty" id="groups-empty" hidden>还没有任何组别，点击"新建组别"开始。</p>
+          </div>
+        </section>
+
+        <!-- ============== Images tab ============== -->
+        <section class="panel" id="tab-images" data-panel="images" hidden>
+          <div class="group-picker">
+            <label for="image-group-select">选择组别</label>
+            <select id="image-group-select"></select>
+          </div>
+
+          <div class="upload-row">
+            <label for="image-input" class="upload-label">点击或拖拽多张图片到此处</label>
+            <input id="image-input" type="file" accept="image/*" multiple hidden />
+            <div class="upload-hint">支持 jpg / jpeg / png / webp / bmp / gif</div>
+          </div>
+
+          <div class="images-toolbar">
+            <button class="btn danger" id="btn-batch-delete" disabled>批量删除</button>
+            <button class="btn" id="btn-reset-group-history">重置该组抽取序列</button>
+            <span class="hint" id="images-meta"></span>
+          </div>
+
+          <div class="images-grid" id="images-grid"></div>
+          <p class="empty" id="images-empty" hidden>该组别下还没有图片，去上传几张吧。</p>
+        </section>
+
+        <!-- ============== Settings tab ============== -->
+        <section class="panel" id="tab-settings" data-panel="settings" hidden>
+          <p class="hint">
+            全局配置（need_prefix / extra_prefix / gif_support / send_as_image_component）
+            由 AstrBot 插件配置页面统一管理；此处仅做只读展示。
+          </p>
+          <div class="kv" id="settings-list"></div>
+        </section>
+
+        <!-- ============== Stats tab ============== -->
+        <section class="panel" id="tab-stats" data-panel="stats" hidden>
+          <div class="kv" id="stats-list"></div>
+          <div class="table-wrap">
+            <table class="data-table" id="stats-table">
+              <thead>
+                <tr>
+                  <th>组别</th>
+                  <th>图片数</th>
+                  <th>本轮已抽</th>
+                  <th>剩余</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="hint">剩余 = 图片数 - 本轮已抽；为 0 时下次抽取会触发洗牌。</p>
+        </section>
+      </main>
+
+      <!-- 组别编辑对话框 -->
+      <div class="dialog-backdrop" id="group-dialog" hidden>
+        <div class="dialog" role="dialog" aria-modal="true">
+          <h2 id="group-dialog-title">新建组别</h2>
+          <form id="group-form">
+            <label>
+              <span>组别名称</span>
+              <input type="text" name="name" id="field-name" required maxlength="32" />
+              <small>仅支持中英文、数字、下划线、连字符；唯一。</small>
+            </label>
+            <label>
+              <span>别名（用换行分隔，每行一个）</span>
+              <textarea name="aliases" id="field-aliases" rows="3"></textarea>
+              <small>不能与其他组别或本组名称冲突。</small>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="require_wake" id="field-require-wake" />
+              <span>需要 @机器人 / 唤醒前缀</span>
+            </label>
+            <label class="checkbox-row" id="field-enabled-row" hidden>
+              <input type="checkbox" name="enabled" id="field-enabled" />
+              <span>启用此组别</span>
+            </label>
+            <div class="dialog-actions">
+              <button type="button" class="btn" id="btn-group-cancel">取消</button>
+              <button type="submit" class="btn primary">保存</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Toast -->
+      <div class="toast" id="toast" hidden></div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

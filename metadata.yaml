@@ -1,0 +1,9 @@
+name: astrbot_plugin_randommeme
+display_name: 随机表情包
+desc: 随机抽取表情包：关键词触发，从组别目录中不重复地抽一张图片发送。支持多组别、别名、需/唤醒开关、WebUI 管理与上传。
+version: 1.0.0
+author: kk
+support_platforms:
+  - aiocqhttp
+  - qq_official
+astrbot_version: ">=4.0.0"

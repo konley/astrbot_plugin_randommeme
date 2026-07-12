@@ -1,0 +1,28 @@
+{
+  "config_items": [
+    {
+      "key": "need_prefix",
+      "type": "bool",
+      "default": true,
+      "description": "是否需要 @机器人 或唤醒前缀才能触发抽取。关闭后可被任何文本直接触发。"
+    },
+    {
+      "key": "extra_prefix",
+      "type": "string",
+      "default": "",
+      "description": "可选的额外触发前缀，例如 '/'；为空则不启用额外前缀。"
+    },
+    {
+      "key": "gif_support",
+      "type": "bool",
+      "default": true,
+      "description": "是否支持发送 GIF 动图。关闭后 .gif 文件会被忽略。"
+    },
+    {
+      "key": "send_as_image_component",
+      "type": "bool",
+      "default": true,
+      "description": "以 Image 组件发送图片；关闭后改用纯文本提示。"
+    }
+  ]
+}

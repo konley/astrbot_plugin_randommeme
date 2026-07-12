@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 @register(
     "astrbot_plugin_randommeme",
-    "kk",
+    "konley",
     "随机抽图表情包插件：关键词触发，按组别从不重复池中抽取一张图片发送",
     version="1.0.0",
 )

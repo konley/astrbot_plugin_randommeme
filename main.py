@@ -19,7 +19,7 @@ from astrbot.core.message.components import Image as CompImage
 from astrbot.core.platform import AstrMessageEvent
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
-from .core.api import register_web_apis
+from .core.api import WebApiMixin
 from .core.manager import MemeManager
 from .core.storage import is_image_filename
 
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
     "随机抽图表情包插件：关键词触发，按组别从不重复池中抽取一张图片发送",
     version="1.0.0",
 )
-class RandomMemePlugin(Star):
+class RandomMemePlugin(Star, WebApiMixin):
     """Top-level Star registering the plugin with AstrBot."""
 
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
@@ -40,20 +40,18 @@ class RandomMemePlugin(Star):
         self.conf = config
         gif_support = bool(self.conf.get("gif_support", True))
         self.manager = MemeManager(gif_support=gif_support)
-        self._web_apis_registered = False
+        self._register_web_apis()
 
     # --------------------------------------------------------- lifecycle
 
     async def initialize(self) -> None:
         await self.manager.load()
-        self._register_web_apis_safe()
         logger.info(
             "[astrbot_plugin_randommeme] initialized; groups=%d",
             len(self.manager.list_groups()),
         )
 
     async def terminate(self) -> None:
-        self._web_apis_registered = False
         logger.info("[astrbot_plugin_randommeme] terminated")
 
     # --------------------------------------------------------- main hook
@@ -180,15 +178,6 @@ class RandomMemePlugin(Star):
         yield event.plain_result(f"已启用 {g.name}")
 
     # --------------------------------------------------------- helpers
-
-    def _register_web_apis_safe(self) -> None:
-        if self._web_apis_registered:
-            return
-        try:
-            register_web_apis(self.context, self.manager)
-            self._web_apis_registered = True
-        except Exception as exc:  # pragma: no cover - guarded
-            logger.exception("注册 Web API 失败: %s", exc)
 
     def _should_handle(self, event: AstrMessageEvent, text: str) -> bool:
         extra_prefix = str(self.conf.get("extra_prefix") or "")

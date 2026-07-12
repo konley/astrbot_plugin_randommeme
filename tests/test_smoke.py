@@ -48,10 +48,9 @@ def test_conf_schema_parses():
 
     schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
     data = json.loads(schema_path.read_text(encoding="utf-8"))
-    assert "config_items" in data
-    for item in data["config_items"]:
-        assert "key" in item
-        assert "type" in item
+    assert isinstance(data, dict)
+    for key, item in data.items():
+        assert "type" in item, f"{key} missing type"
 
 
 def test_plugin_page_layout_exists():

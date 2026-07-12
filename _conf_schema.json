@@ -1,28 +1,22 @@
 {
-  "config_items": [
-    {
-      "key": "need_prefix",
-      "type": "bool",
-      "default": true,
-      "description": "是否需要 @机器人 或唤醒前缀才能触发抽取。关闭后可被任何文本直接触发。"
+    "need_prefix": {
+        "description": "是否需要 @机器人 或唤醒前缀才能触发抽取。关闭后可被任何文本直接触发。",
+        "type": "bool",
+        "default": true
     },
-    {
-      "key": "extra_prefix",
-      "type": "string",
-      "default": "",
-      "description": "可选的额外触发前缀，例如 '/'；为空则不启用额外前缀。"
+    "extra_prefix": {
+        "description": "可选的额外触发前缀，例如 '/'；为空则不启用额外前缀。",
+        "type": "string",
+        "default": ""
     },
-    {
-      "key": "gif_support",
-      "type": "bool",
-      "default": true,
-      "description": "是否支持发送 GIF 动图。关闭后 .gif 文件会被忽略。"
+    "gif_support": {
+        "description": "是否支持发送 GIF 动图。关闭后 .gif 文件会被忽略。",
+        "type": "bool",
+        "default": true
     },
-    {
-      "key": "send_as_image_component",
-      "type": "bool",
-      "default": true,
-      "description": "以 Image 组件发送图片；关闭后改用纯文本提示。"
+    "send_as_image_component": {
+        "description": "以 Image 组件发送图片；关闭后改用纯文本提示。",
+        "type": "bool",
+        "default": true
     }
-  ]
 }

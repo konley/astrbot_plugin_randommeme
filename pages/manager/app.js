@@ -391,8 +391,10 @@ function openGroupDialog(group = null) {
   $("#field-name").disabled = !!group;
   $("#field-aliases").value = (group?.aliases || []).join("\n");
   $("#field-require-wake").checked = !!group?.require_wake;
+  $("#field-reply-mode").checked = !!group?.reply_mode;
   $("#field-enabled").checked = group ? !!group.enabled : true;
   $("#field-enabled-row").hidden = !group;
+  $("#field-reply-row").hidden = !group;
   $("#group-dialog").hidden = false;
 }
 
@@ -410,6 +412,7 @@ async function onGroupSubmit(e) {
     .map((s) => s.trim())
     .filter(Boolean);
   const require_wake = $("#field-require-wake").checked;
+  const reply_mode = $("#field-reply-mode").checked;
   const enabled = $("#field-enabled").checked;
 
   const isCreate = !state.editing;
@@ -419,11 +422,11 @@ async function onGroupSubmit(e) {
   try {
     if (isCreate) {
       if (!name) { showToast("请输入组别名称", "error"); return; }
-      await bridge.apiPost("groups", { name, aliases, require_wake });
+      await bridge.apiPost("groups", { name, aliases, require_wake, reply_mode });
       showToast(`已创建: ${name}`, "success");
     } else {
       await bridge.apiPost(`groups/${encodeURIComponent(state.editing.name)}/update`, {
-        aliases, require_wake, enabled,
+        aliases, require_wake, enabled, reply_mode,
       });
       showToast(`已更新: ${state.editing.name}`, "success");
     }
@@ -456,6 +459,7 @@ function renderGroups() {
     tr.appendChild(td(`${g.image_count}`));
     tr.appendChild(makeStatusPillCell(g.enabled));
     tr.appendChild(makeStatusPillCell(g.require_wake, "wake", "需唤醒", "无需唤醒"));
+    tr.appendChild(makeStatusPillCell(g.reply_mode, "reply", "回复", "直发"));
     tr.appendChild(makeActionCell(g));
     tbody.appendChild(tr);
   }

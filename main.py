@@ -15,7 +15,7 @@ import logging
 from astrbot.api.event import filter
 from astrbot.api.star import Context, Star, register
 from astrbot.core import AstrBotConfig
-from astrbot.core.message.components import Image as CompImage
+from astrbot.core.message.components import Image as CompImage, Reply
 from astrbot.core.platform import AstrMessageEvent
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
@@ -39,7 +39,8 @@ class RandomMemePlugin(Star, WebApiMixin):
         super().__init__(context)
         self.conf = config
         gif_support = bool(self.conf.get("gif_support", True))
-        self.manager = MemeManager(gif_support=gif_support)
+        exact_match = bool(self.conf.get("exact_match", False))
+        self.manager = MemeManager(gif_support=gif_support, exact_match=exact_match)
         self._register_web_apis()
 
     # --------------------------------------------------------- lifecycle
@@ -79,7 +80,7 @@ class RandomMemePlugin(Star, WebApiMixin):
             return
 
         logger.info("[astrbot_plugin_randommeme] picked %s for %s", picked, group.name)
-        chain = self._build_image_chain(picked)
+        chain = self._build_image_chain(picked, event=event if group.reply_mode else None)
         if chain is not None:
             yield event.chain_result(chain)
         else:
@@ -199,7 +200,12 @@ class RandomMemePlugin(Star, WebApiMixin):
             return True
         return bool(getattr(event, "is_at_or_wake_command", False))
 
-    def _build_image_chain(self, path: str) -> list | None:
+    def _build_image_chain(self, path: str, *, event: AstrMessageEvent | None = None) -> list | None:
         if not is_image_filename(path, gif_support=self.manager.gif_support):
             return None
-        return [CompImage.fromFileSystem(path)]
+        chain = [CompImage.fromFileSystem(path)]
+        if event is not None:
+            msg_id = getattr(event.message_obj, "message_id", "")
+            if msg_id:
+                chain.insert(0, Reply(id=str(msg_id)))
+        return chain

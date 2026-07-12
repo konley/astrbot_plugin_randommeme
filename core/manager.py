@@ -32,8 +32,9 @@ class MemeManager:
 
     STATE_FILE_NAME = STATE_FILE
 
-    def __init__(self, *, gif_support: bool = True) -> None:
+    def __init__(self, *, gif_support: bool = True, exact_match: bool = False) -> None:
         self._gif_support = gif_support
+        self._exact_match = exact_match
         self._lock = asyncio.Lock()
         self._groups: list[Group] = []
         self._history: dict[str, list[str]] = {}
@@ -48,9 +49,10 @@ class MemeManager:
             self._prune_history_locked()
             await self._save_locked()
 
-    async def reload_config(self, *, gif_support: bool) -> None:
+    async def reload_config(self, *, gif_support: bool, exact_match: bool = False) -> None:
         async with self._lock:
             self._gif_support = gif_support
+            self._exact_match = exact_match
             self._prune_history_locked()
 
     # ------------------------------------------------------------ views
@@ -58,6 +60,10 @@ class MemeManager:
     @property
     def gif_support(self) -> bool:
         return self._gif_support
+
+    @property
+    def exact_match(self) -> bool:
+        return self._exact_match
 
     def list_groups(self) -> list[Group]:
         return list(self._groups)
@@ -70,22 +76,30 @@ class MemeManager:
         return None
 
     def match_group(self, text: str) -> Group | None:
-        """Return the group whose name OR any alias equals ``text`` exactly.
+        """Return the group whose keyword appears in ``text``.
 
-        Match is case-insensitive on the keyword but the original group name
-        and aliases are returned unchanged.
+        Fuzzy mode (default): keyword only needs to appear anywhere in text;
+        longest matching keyword wins when multiple groups match.
+        Exact mode: the whole text must equal the keyword (case-insensitive).
         """
         token = (text or "").strip()
         if not token:
             return None
         lowered = token.casefold()
+        best: tuple[int, Group] | None = None  # (kw_len, group)
         for g in self._groups:
             if not g.enabled:
                 continue
             for kw in g.all_keywords():
-                if kw.casefold() == lowered:
-                    return g
-        return None
+                kw_lower = kw.casefold()
+                if self._exact_match:
+                    if kw_lower == lowered:
+                        return g
+                elif kw_lower in lowered:
+                    kw_len = len(kw_lower)
+                    if best is None or kw_len > best[0]:
+                        best = (kw_len, g)
+        return best[1] if best else None
 
     # ------------------------------------------------------------ images
 
@@ -108,19 +122,6 @@ class MemeManager:
     async def add_images(
         self, group_name: str, uploads: list[tuple[str, bytes]]
     ) -> list[str]:
-        """Persist uploaded images into ``memes/<group>``.
-
-        Args:
-            group_name: Target group.
-            uploads: ``(filename, content_bytes)`` tuples. Filenames are
-                sanitized; duplicates are suffixed with an index.
-
-        Returns:
-            Stored filenames (post-collision rename).
-
-        Raises:
-            ValueError: If the group does not exist.
-        """
         async with self._lock:
             if not self.get_group(group_name):
                 raise ValueError(f"组别不存在: {group_name}")
@@ -143,7 +144,6 @@ class MemeManager:
             return stored
 
     async def delete_images(self, group_name: str, filenames: list[str]) -> list[str]:
-        """Delete the named images; also prune them from history."""
         async with self._lock:
             if not self.get_group(group_name):
                 raise ValueError(f"组别不存在: {group_name}")
@@ -175,6 +175,7 @@ class MemeManager:
         *,
         aliases: list[str] | None = None,
         require_wake: bool = False,
+        reply_mode: bool = False,
     ) -> Group:
         async with self._lock:
             name = (name or "").strip()
@@ -184,11 +185,12 @@ class MemeManager:
                 name=name,
                 aliases=cleaned_aliases,
                 require_wake=require_wake,
+                reply_mode=reply_mode,
                 enabled=True,
             )
             self._groups.append(group)
             await self._save_locked()
-            memes_dir(name)  # ensure dir
+            memes_dir(name)
             return group
 
     async def update_group(
@@ -198,6 +200,7 @@ class MemeManager:
         aliases: list[str] | None = None,
         require_wake: bool | None = None,
         enabled: bool | None = None,
+        reply_mode: bool | None = None,
     ) -> Group:
         async with self._lock:
             group = self.get_group(name)
@@ -207,6 +210,8 @@ class MemeManager:
                 group.require_wake = bool(require_wake)
             if enabled is not None:
                 group.enabled = bool(enabled)
+            if reply_mode is not None:
+                group.reply_mode = bool(reply_mode)
             if aliases is not None:
                 group.aliases = self._validate_aliases_locked(name, aliases)
             await self._save_locked()
@@ -225,7 +230,6 @@ class MemeManager:
             return True
 
     async def reset_history(self, name: str | None = None) -> int:
-        """Clear draw history for one or all groups."""
         async with self._lock:
             if name is None:
                 count = len(self._history)
@@ -239,13 +243,6 @@ class MemeManager:
     # ------------------------------------------------------------ draw
 
     async def draw(self, group_name: str) -> str | None:
-        """Pick the next non-repeating image, persisting state.
-
-        Returns:
-            Absolute path to the picked image, or ``None`` if the group has no
-            images. When every image in the group has been drawn in the
-            current round, history resets and a fresh round begins.
-        """
         async with self._lock:
             group = self.get_group(group_name)
             if not group:

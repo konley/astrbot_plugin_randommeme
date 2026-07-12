@@ -46,6 +46,7 @@ class WebApiMixin:
             "aliases": list(g.aliases),
             "require_wake": g.require_wake,
             "enabled": g.enabled,
+            "reply_mode": g.reply_mode,
             "image_count": manager.image_count(g.name),
             "created_at": g.created_at,
         }
@@ -202,9 +203,11 @@ class WebApiMixin:
         if not isinstance(aliases_raw, list):
             return jsonify({"status": "error", "message": "aliases 必须是列表"}), 400
         require_wake = bool(body.get("require_wake") or False)
+        reply_mode = bool(body.get("reply_mode") or False)
         try:
             group = await self.manager.create_group(
-                name, aliases=aliases_raw, require_wake=require_wake
+                name, aliases=aliases_raw, require_wake=require_wake,
+                reply_mode=reply_mode,
             )
         except ValueError as exc:
             return jsonify({"status": "error", "message": str(exc)}), 400
@@ -231,6 +234,8 @@ class WebApiMixin:
             kwargs["require_wake"] = bool(body["require_wake"])
         if "enabled" in body:
             kwargs["enabled"] = bool(body["enabled"])
+        if "reply_mode" in body:
+            kwargs["reply_mode"] = bool(body["reply_mode"])
         try:
             await self.manager.update_group(g.name, **kwargs)
         except ValueError as exc:

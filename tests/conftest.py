@@ -97,6 +97,12 @@ def _install_stubs() -> None:
             "fromURL": staticmethod(lambda u, **kw: ("ImageURL", u)),
         },
     )
+    class _StubReply:
+        def __init__(self, **kw):
+            self.id = kw.get("id", "")
+        def toDict(self):
+            return {"type": "reply", "data": {"id": str(self.id)}}
+    core_components.Reply = _StubReply
 
     core_star_filter = types.ModuleType("astrbot.core.star.filter")
     event_message_type_mod = types.ModuleType(

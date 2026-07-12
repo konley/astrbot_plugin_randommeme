@@ -22,8 +22,8 @@ from astrbot_plugin_randommeme.core.storage import (
 
 
 @pytest.mark.asyncio
-async def test_match_group_exact_name_case_insensitive(isolated_plugin_data):
-    mgr = MemeManager(gif_support=True)
+async def test_match_group_exact_mode(isolated_plugin_data):
+    mgr = MemeManager(gif_support=True, exact_match=True)
     await mgr.create_group("摸鱼", aliases=["moyu", "摸鱼一下"])
     await mgr.create_group("干饭", aliases=["ganfan"])
     await mgr.update_group("干饭", enabled=False)
@@ -31,11 +31,29 @@ async def test_match_group_exact_name_case_insensitive(isolated_plugin_data):
     assert mgr.match_group("摸鱼").name == "摸鱼"
     assert mgr.match_group("MOYU").name == "摸鱼"
     assert mgr.match_group("干饭") is None  # disabled
-    # partial should NOT match (no fuzzy)
+    # partial should NOT match in exact mode
     assert mgr.match_group("摸鱼一下子") is None
-    # leading / trailing whitespace IS trimmed (per requirements)
+    # leading / trailing whitespace IS trimmed
     assert mgr.match_group("  摸鱼  ").name == "摸鱼"
     assert mgr.match_group(" moyu ").name == "摸鱼"
+
+
+@pytest.mark.asyncio
+async def test_match_group_fuzzy_mode(isolated_plugin_data):
+    mgr = MemeManager(gif_support=True)
+    await mgr.create_group("doro", aliases=["多肉"])
+    await mgr.create_group("doro2", aliases=["多肉2"])
+
+    # exact still works
+    assert mgr.match_group("doro").name == "doro"
+    # partial / contained
+    assert mgr.match_group("看doro").name == "doro"
+    assert mgr.match_group("doro表情").name == "doro"
+    # longest keyword wins
+    assert mgr.match_group("多肉2").name == "doro2"
+    assert mgr.match_group("多肉").name == "doro"
+    # case-insensitive
+    assert mgr.match_group("DORO").name == "doro"
 
 
 # ------------------------------------------------------------ draw tests

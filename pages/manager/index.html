@@ -37,6 +37,7 @@
                   <th>图片</th>
                   <th>状态</th>
                   <th>需唤醒</th>
+                  <th>回复</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -120,6 +121,10 @@
             <label class="checkbox-row" id="field-enabled-row" hidden>
               <input type="checkbox" name="enabled" id="field-enabled" />
               <span>启用此组别</span>
+            </label>
+            <label class="checkbox-row" id="field-reply-row" hidden>
+              <input type="checkbox" name="reply_mode" id="field-reply-mode" />
+              <span>回复模式（引用触发消息发送）</span>
             </label>
             <div class="dialog-actions">
               <button type="button" class="btn" id="btn-group-cancel">取消</button>

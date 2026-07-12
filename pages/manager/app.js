@@ -474,28 +474,22 @@ async function onGroupSubmit(e) {
   const require_wake = $("#field-require-wake").checked;
   const enabled = $("#field-enabled").checked;
 
-  console.log("[randommeme] onGroupSubmit", { state: state.dialogMode, name, aliases, require_wake });
+  const isCreate = !state.editing;
   try {
-    if (state.dialogMode === "create") {
-      console.log("[randommeme] calling apiPost groups");
-      const r = await bridge.apiPost("groups", { name, aliases, require_wake });
-      console.log("[randommeme] apiPost success", r);
+    if (isCreate) {
+      if (!name) { showToast("请输入组别名称", "error"); return; }
+      await bridge.apiPost("groups", { name, aliases, require_wake });
       showToast(`已创建: ${name}`, "success");
-    } else if (state.editing) {
-      console.log("[randommeme] calling apiPost update", state.editing.name);
-      const r = await bridge.apiPost(`groups/${encodeURIComponent(state.editing.name)}/update`, {
-        aliases,
-        require_wake,
-        enabled,
+    } else {
+      await bridge.apiPost(`groups/${encodeURIComponent(state.editing.name)}/update`, {
+        aliases, require_wake, enabled,
       });
-      console.log("[randommeme] apiPost update success", r);
       showToast(`已更新: ${state.editing.name}`, "success");
     }
     closeGroupDialog();
     await refreshGroups();
     refreshStats();
   } catch (err) {
-    console.error("[randommeme] save failed", err);
     showToast(`保存失败: ${err.message}`, "error");
   }
 }

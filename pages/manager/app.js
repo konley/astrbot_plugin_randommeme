@@ -70,8 +70,6 @@ function bindImageEvents() {
 
   const uploadRow = $(".upload-row");
   const fileInput = $("#image-input");
-  const label = $(".upload-label");
-  label.addEventListener("click", () => fileInput.click());
 
   fileInput.addEventListener("change", () => {
     if (fileInput.files?.length) {

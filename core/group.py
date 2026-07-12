@@ -35,7 +35,6 @@ class Group:
     aliases: list[str] = field(default_factory=list)
     require_wake: bool = False
     enabled: bool = True
-    reply_mode: bool = False
     created_at: float = field(default_factory=lambda: time.time())
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,7 +50,6 @@ class Group:
             aliases=[str(a).strip() for a in raw_aliases if str(a).strip()],
             require_wake=bool(data.get("require_wake", False)),
             enabled=bool(data.get("enabled", True)),
-            reply_mode=bool(data.get("reply_mode", False)),
             created_at=float(data.get("created_at") or time.time()),
         )
 

@@ -1,27 +1,32 @@
 {
     "need_prefix": {
-        "description": "是否需要 @机器人 或唤醒前缀才能触发抽取。关闭后可被任何文本直接触发。",
+        "description": "需要 @机器人 或唤醒前缀才触发。关则任何文本直接触发。",
         "type": "bool",
         "default": true
     },
     "extra_prefix": {
-        "description": "可选的额外触发前缀，例如 '/'；为空则不启用额外前缀。",
+        "description": "额外触发前缀，如 '/'；空则不启用。",
         "type": "string",
         "default": ""
     },
     "gif_support": {
-        "description": "是否支持发送 GIF 动图。关闭后 .gif 文件会被忽略。",
+        "description": "支持 GIF 动图。关则忽略 .gif。",
         "type": "bool",
         "default": true
     },
     "exact_match": {
-        "description": "是否使用精确匹配。关闭后只要文本包含关键词即触发（模糊匹配，默认）。",
+        "description": "精确匹配。关则文本包含关键词即触发（模糊匹配）。",
         "type": "bool",
         "default": false
     },
-    "send_as_image_component": {
-        "description": "以 Image 组件发送图片；关闭后改用纯文本提示。",
+    "reply_mode": {
+        "description": "回复模式：引用触发消息发图。关则直接发不引用。",
         "type": "bool",
-        "default": true
+        "default": false
+    },
+    "cooldown_seconds": {
+        "description": "同群/私聊触发冷却秒数。0=不限。",
+        "type": "int",
+        "default": 0
     }
 }

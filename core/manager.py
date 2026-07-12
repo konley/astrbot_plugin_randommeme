@@ -49,12 +49,6 @@ class MemeManager:
             self._prune_history_locked()
             await self._save_locked()
 
-    async def reload_config(self, *, gif_support: bool, exact_match: bool = False) -> None:
-        async with self._lock:
-            self._gif_support = gif_support
-            self._exact_match = exact_match
-            self._prune_history_locked()
-
     # ------------------------------------------------------------ views
 
     @property
@@ -175,7 +169,6 @@ class MemeManager:
         *,
         aliases: list[str] | None = None,
         require_wake: bool = False,
-        reply_mode: bool = False,
     ) -> Group:
         async with self._lock:
             name = (name or "").strip()
@@ -185,7 +178,6 @@ class MemeManager:
                 name=name,
                 aliases=cleaned_aliases,
                 require_wake=require_wake,
-                reply_mode=reply_mode,
                 enabled=True,
             )
             self._groups.append(group)
@@ -200,7 +192,6 @@ class MemeManager:
         aliases: list[str] | None = None,
         require_wake: bool | None = None,
         enabled: bool | None = None,
-        reply_mode: bool | None = None,
     ) -> Group:
         async with self._lock:
             group = self.get_group(name)
@@ -210,8 +201,6 @@ class MemeManager:
                 group.require_wake = bool(require_wake)
             if enabled is not None:
                 group.enabled = bool(enabled)
-            if reply_mode is not None:
-                group.reply_mode = bool(reply_mode)
             if aliases is not None:
                 group.aliases = self._validate_aliases_locked(name, aliases)
             await self._save_locked()
@@ -239,6 +228,14 @@ class MemeManager:
                 self._history.pop(name, None)
             await self._save_locked()
             return count
+
+    def get_history_size(self) -> int:
+        """Total number of draws across all groups in the current round."""
+        return sum(len(v) for v in self._history.values())
+
+    def get_group_drew_count(self, name: str) -> int:
+        """Number of draws for a specific group in the current round."""
+        return len(self._history.get(name, []))
 
     # ------------------------------------------------------------ draw
 

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from astrbot.api.event import filter
 from astrbot.api.star import Context, Star, register
@@ -41,6 +42,8 @@ class RandomMemePlugin(Star, WebApiMixin):
         gif_support = bool(self.conf.get("gif_support", True))
         exact_match = bool(self.conf.get("exact_match", False))
         self.manager = MemeManager(gif_support=gif_support, exact_match=exact_match)
+        # 冷却跟踪：unified_msg_origin → 上次触发时间戳
+        self._last_trigger: dict[str, float] = {}
         self._register_web_apis()
 
     # --------------------------------------------------------- lifecycle
@@ -54,6 +57,14 @@ class RandomMemePlugin(Star, WebApiMixin):
 
     async def terminate(self) -> None:
         logger.info("[astrbot_plugin_randommeme] terminated")
+
+    # --------------------------------------------------------- config helpers
+
+    def _cooldown_seconds(self) -> int:
+        return int(self.conf.get("cooldown_seconds", 0))
+
+    def _reply_mode(self) -> bool:
+        return bool(self.conf.get("reply_mode", False))
 
     # --------------------------------------------------------- main hook
 
@@ -72,6 +83,19 @@ class RandomMemePlugin(Star, WebApiMixin):
             yield event.plain_result(f"触发 {group.name} 需要 @机器人 或唤醒前缀")
             return
 
+        # ---- CD 冷却检查 ----
+        cd = self._cooldown_seconds()
+        if cd > 0:
+            origin = getattr(event, "unified_msg_origin", "") or ""
+            now = time.time()
+            last = self._last_trigger.get(origin, 0.0)
+            elapsed = now - last
+            if elapsed < cd:
+                remain = int(cd - elapsed)
+                yield event.plain_result(f"冷却中，请 {remain} 秒后再试")
+                return
+            self._last_trigger[origin] = now
+
         picked = await self.manager.draw(group.name)
         if not picked:
             yield event.plain_result(
@@ -80,7 +104,9 @@ class RandomMemePlugin(Star, WebApiMixin):
             return
 
         logger.info("[astrbot_plugin_randommeme] picked %s for %s", picked, group.name)
-        chain = self._build_image_chain(picked, event=event if group.reply_mode else None)
+        chain = self._build_image_chain(
+            picked, event=event if self._reply_mode() else None
+        )
         if chain is not None:
             yield event.chain_result(chain)
         else:
@@ -180,25 +206,26 @@ class RandomMemePlugin(Star, WebApiMixin):
 
     # --------------------------------------------------------- helpers
 
+    def _is_woken(self, event: AstrMessageEvent, text: str) -> bool:
+        """消息是否处于"唤醒"状态（@机器人 或 extra_prefix 触发）。"""
+        extra = str(self.conf.get("extra_prefix") or "")
+        if extra and text.startswith(extra):
+            return True
+        return bool(getattr(event, "is_at_or_wake_command", False))
+
     def _should_handle(self, event: AstrMessageEvent, text: str) -> bool:
-        extra_prefix = str(self.conf.get("extra_prefix") or "")
-        if extra_prefix and text.startswith(extra_prefix):
+        """是否应该处理此消息。"""
+        if self._is_woken(event, text):
             return True
         if not bool(self.conf.get("need_prefix", True)):
             return True
-        return bool(getattr(event, "is_at_or_wake_command", False))
+        return False
 
     def _strip_prefix(self, text: str) -> str:
         extra = str(self.conf.get("extra_prefix") or "")
         if extra and text.startswith(extra):
             return text[len(extra) :].strip()
         return text
-
-    def _is_woken(self, event: AstrMessageEvent, text: str) -> bool:
-        extra = str(self.conf.get("extra_prefix") or "")
-        if extra and text.startswith(extra):
-            return True
-        return bool(getattr(event, "is_at_or_wake_command", False))
 
     def _build_image_chain(self, path: str, *, event: AstrMessageEvent | None = None) -> list | None:
         if not is_image_filename(path, gif_support=self.manager.gif_support):

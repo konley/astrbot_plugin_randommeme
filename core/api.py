@@ -262,14 +262,14 @@ def register_web_apis(context, manager: MemeManager) -> None:
     """
 
     def _bind(coro):
-        async def wrapper(**path_kwargs):
-            return await coro(manager, **path_kwargs)
+        async def wrapper(*args, **path_kwargs):
+            return await coro(manager, *args, **path_kwargs)
 
         return wrapper
 
     def _bind_no_param(coro):
-        async def wrapper(**_path_kwargs):
-            return await coro(manager)
+        async def wrapper(*args, **_path_kwargs):
+            return await coro(manager, *args)
 
         return wrapper
 

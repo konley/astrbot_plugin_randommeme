@@ -16,6 +16,13 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const PLUGIN_NAME = "astrbot_plugin_randommeme";
 const SUPPORTED_EXTS = ["jpg", "jpeg", "png", "webp", "bmp", "gif"];
 
+function unwrap(payload) {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    return payload.data;
+  }
+  return payload;
+}
+
 async function init() {
   const ctx = await bridge.ready();
   document.title = bridge.t("pages.manager.title", "随机表情包 · 管理");
@@ -101,7 +108,7 @@ function bindImageEvents() {
 
 async function refreshGroups() {
   try {
-    const result = await bridge.apiGet("groups");
+    const result = unwrap(await bridge.apiGet("groups"));
     state.groups = result.groups || [];
     renderGroups();
     renderGroupSelect();
@@ -113,7 +120,7 @@ async function refreshGroups() {
 
 async function refreshStats() {
   try {
-    const stats = await bridge.apiGet("stats");
+    const stats = unwrap(await bridge.apiGet("stats"));
     renderStats(stats);
   } catch (err) {
     showToast(`加载统计失败: ${err.message}`, "error");
@@ -251,7 +258,7 @@ async function loadImages() {
     return;
   }
   try {
-    const result = await bridge.apiGet(`groups/${encodeURIComponent(state.currentGroup)}/images`);
+    const result = unwrap(await bridge.apiGet(`groups/${encodeURIComponent(state.currentGroup)}/images`));
     state.images = result.images || [];
   } catch (err) {
     showToast(`加载图片失败: ${err.message}`, "error");
@@ -391,10 +398,10 @@ async function onBatchDelete() {
   const filenames = Array.from(state.selected);
   if (!confirm(`确定要批量删除 ${filenames.length} 张图片吗？`)) return;
   try {
-    const result = await bridge.apiPost(
+    const result = unwrap(await bridge.apiPost(
       `groups/${encodeURIComponent(state.currentGroup)}/images/delete`,
       { filenames }
-    );
+    ));
     showToast(`已删除 ${result.removed.length} 张`, "success");
     state.selected.clear();
     await loadImages();
@@ -420,7 +427,7 @@ async function onResetGroupHistory() {
 async function onResetAll() {
   if (!confirm("重置所有组别的抽取序列？（不会删除任何图片）")) return;
   try {
-    const result = await bridge.apiPost("reset");
+    const result = unwrap(await bridge.apiPost("reset"));
     showToast(`已重置 ${result.groups_cleared} 个组别`, "success");
     refreshStats();
   } catch (err) {

@@ -96,6 +96,11 @@ function bindImageEvents() {
   $("#image-group-select").addEventListener("change", (e) => {
     state.currentGroup = e.target.value;
     state.selected.clear();
+    // 立即清空网格显示加载状态
+    $("#images-grid").innerHTML = "";
+    $("#images-empty").hidden = false;
+    $("#images-empty").textContent = "加载中…";
+    $("#images-meta").textContent = "";
     loadImages();
   });
 
@@ -414,8 +419,10 @@ async function onGroupSubmit(e) {
 
   const isCreate = !state.editing;
   const btn = $("#group-form button[type=submit]");
+  const btnText = btn.textContent;
   state.submitting = true;
   btn.disabled = true;
+  btn.textContent = "保存中…";
   try {
     if (isCreate) {
       if (!name) { showToast("请输入组别名称", "error"); return; }
@@ -435,6 +442,7 @@ async function onGroupSubmit(e) {
   } finally {
     state.submitting = false;
     btn.disabled = false;
+    btn.textContent = btnText;
   }
 }
 
@@ -498,12 +506,17 @@ function makeActionCell(g) {
 
 function renderGroupSelect() {
   const select = $("#image-group-select");
+  const prevValue = select.value;  // 记住当前选中的值
   select.innerHTML = "";
   for (const g of state.groups) {
     const opt = document.createElement("option");
     opt.value = g.name;
     opt.textContent = `${g.name} (${g.image_count})`;
     select.appendChild(opt);
+  }
+  // 如果之前选中的组别还在列表中，保持选中；否则选第一个
+  if (prevValue && [...select.options].some(o => o.value === prevValue)) {
+    select.value = prevValue;
   }
   state.currentGroup = select.value || null;
   if (state.currentGroup) loadImages();

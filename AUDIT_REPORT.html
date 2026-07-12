@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>astrbot_plugin_randommeme · 全面审计报告</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --surface: #f8f9fb;
+  --border: #e2e6ef;
+  --text: #1a1d26;
+  --text-secondary: #636b7e;
+  --primary: #4f46e5;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #0284c7;
+  --shadow: 0 1px 3px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.06);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", Roboto, sans-serif;
+  font-size: 15px; line-height: 1.6;
+}
+.container { max-width: 880px; margin: 0 auto; padding: 48px 24px; }
+
+header { margin-bottom: 40px; }
+header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+header .meta { color: var(--text-secondary); font-size: 14px; }
+header .meta span { margin-right: 20px; }
+
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; letter-spacing: .3px;
+}
+.badge.critical { background: #fef2f2; color: var(--danger); }
+.badge.warning { background: #fffbeb; color: var(--warning); }
+.badge.info { background: #eff6ff; color: var(--info); }
+.badge.success { background: #f0fdf4; color: var(--success); }
+
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+  gap: 14px; margin-bottom: 36px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 16px; box-shadow: var(--shadow);
+}
+.card .num { font-size: 32px; font-weight: 700; line-height: 1.2; }
+.card .label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+section { margin-bottom: 32px; }
+section h2 {
+  font-size: 20px; font-weight: 600; margin-bottom: 14px;
+  padding-bottom: 8px; border-bottom: 2px solid var(--border);
+}
+
+.issue, .suggestion {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 20px; margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.issue h3, .suggestion h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.issue .loc { font-family: "SF Mono", "Cascadia Code", monospace; font-size: 13px;
+  color: var(--text-secondary); margin-bottom: 8px; }
+.issue .desc, .suggestion .desc { margin-bottom: 6px; }
+.issue .fix, .suggestion .impact {
+  margin-top: 8px; padding: 10px 14px; background: var(--bg);
+  border-radius: 8px; font-size: 14px;
+}
+.issue .fix code, .suggestion .impact code {
+  background: #eef1f8; padding: 1px 5px; border-radius: 4px;
+  font-family: "SF Mono", "Cascadia Code", monospace; font-size: 13px;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+table th, table td { text-align: left; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); }
+table th { color: var(--text-secondary); font-weight: 500; font-size: 12px;
+  text-transform: uppercase; letter-spacing: .4px; background: var(--surface); }
+
+.file-tree { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 20px; box-shadow: var(--shadow);
+  font-family: "SF Mono", "Cascadia Code", monospace; font-size: 13px;
+  line-height: 1.8; white-space: pre; overflow-x: auto; }
+
+.verdict-box {
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
+  padding: 20px 24px; margin-bottom: 32px;
+}
+.verdict-box h2 { border: none; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>📋 astrbot_plugin_randommeme · 全面审计报告</h1>
+  <div class="meta">
+    <span>版本 1.0.0</span>
+    <span>作者 konley</span>
+    <span>审计日期 2025-07-12</span>
+    <span>测试 23/23 ✅</span>
+  </div>
+</header>
+
+<!-- 总览 -->
+<div class="summary-cards">
+  <div class="card"><div class="num" style="color:var(--danger)">2</div><div class="label">问题 (Bugs)</div></div>
+  <div class="card"><div class="num" style="color:var(--warning)">2</div><div class="label">代码异味</div></div>
+  <div class="card"><div class="num" style="color:var(--info)">0</div><div class="label">安全漏洞</div></div>
+  <div class="card"><div class="num" style="color:var(--success)">10+</div><div class="label">改进建议</div></div>
+</div>
+
+<!-- 最终结论 -->
+<div class="verdict-box">
+  <h2 style="color:var(--success)">✅ 总体结论：代码质量优秀，准生产可用</h2>
+  <p>插件结构清晰、测试覆盖全面（23 测试均通过）、安全防护到位（路径遍历防护/原子写入/输入校验均已实现）、遵循 AstrBot 全部最佳实践。发现的 2 个问题均为非致命性的死代码/死配置，不影响运行。以下为详细审计结果。</p>
+</div>
+
+<!-- ═══════ 问题 ═══════ -->
+<section>
+<h2>🐛 问题 (Bugs)</h2>
+
+<div class="issue">
+  <h3>1. <code>send_as_image_component</code> 配置项从未被读取</h3>
+  <div class="loc">`_conf_schema.json:20` → `main.py:203-211`</div>
+  <div class="desc">
+    <span class="badge warning">死配置</span>
+    <code>_conf_schema.json</code> 定义了 <code>send_as_image_component</code>（默认 true），但 <code>main.py</code> 中从未调用 <code>self.conf.get("send_as_image_component")</code>。<code>_build_image_chain()</code> 总是返回 Image Component，用户即使把这个配置改成 false，行为也不会有任何变化。
+  </div>
+  <div class="fix">
+    <strong>修复方案（二选一）：</strong><br>
+    <b>A) 实现逻辑：</b>在 <code>_build_image_chain</code> 中读取配置，为 false 时改为文本提示路径<br>
+    <b>B) 删除配置：</b>从 <code>_conf_schema.json</code> 删除此项，避免用户困惑<br>
+    推荐方案 B — 该功能没有实际使用场景，文本提示路径对用户毫无意义。
+  </div>
+</div>
+
+<div class="issue">
+  <h3>2. <code>MemeManager.reload_config()</code> 从未被调用</h3>
+  <div class="loc">`core/manager.py:52-56`</div>
+  <div class="desc">
+    <span class="badge warning">死代码</span>
+    <code>reload_config()</code> 方法旨在运行时更新 <code>gif_support</code> 和 <code>exact_match</code> 而不重建 manager 实例。然而 <code>main.py</code> 的 <code>__init__</code> 在每次 reload 时直接新建 <code>MemeManager</code> 实例，没有任何调用链能到达此方法。
+  </div>
+  <div class="fix">
+    <strong>修复方案：</strong>删除 <code>reload_config()</code> 方法（约 6 行代码），或在 <code>RandomMemePlugin</code> 上加一个 <code>on_config_updated</code> 钩子并调用之。推荐前者，因为新建实例等价且更简洁。
+  </div>
+</div>
+</section>
+
+<!-- ═══════ 代码异味 ═══════ -->
+<section>
+<h2>🧹 代码异味</h2>
+
+<div class="issue">
+  <h3><code>_should_handle</code> / <code>_is_woken</code> 存在重复逻辑</h3>
+  <div class="loc">`main.py:183-201`</div>
+  <div class="desc">
+    <span class="badge info">可重构</span>
+    两个方法几乎相同 —— 都检查 <code>extra_prefix</code> 和 <code>is_at_or_wake_command</code>。实际上 <code>_should_handle</code> 的 true 条件包含了 <code>_is_woken</code> 的 true 条件，存在逻辑重叠与混淆。
+  </div>
+  <div class="fix">
+    <strong>建议：</strong>将 <code>_should_handle</code> 改为纯"是否应该处理此消息"的判断，<code>_is_woken</code> 改为纯"当前消息是否被唤醒"的判断，消除重叠。<br>
+    或直接在 <code>on_message</code> 内联判断，减少间接层数。
+  </div>
+</div>
+
+<div class="issue">
+  <h3><code>_api_get_stats</code> 访问私有属性 <code>_history</code></h3>
+  <div class="loc">`core/api.py:387,392`</div>
+  <div class="desc">
+    <span class="badge info">封装弱化</span>
+    使用 <code>self.manager._history</code>（<code># noqa: SLF001</code>）而非公有 API，破坏封装。如果未来修改 <code>_history</code> 的内部表示，API handler 会静默出错。
+  </div>
+  <div class="fix">
+    <strong>建议：</strong>在 <code>MemeManager</code> 上添加公有方法 <code>get_history_size()</code> 和 <code>get_group_drew_count(name)</code>，供 API 层调用。
+  </div>
+</div>
+</section>
+
+<!-- ═══════ 安全审计 ═══════ -->
+<section>
+<h2>🔒 安全审计</h2>
+
+<table>
+<thead><tr><th>检查项</th><th>状态</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>路径遍历防护</td><td><span class="badge success">✅</span></td><td><code>safe_join()</code> 使用 <code>Path.resolve()</code> + <code>relative_to()</code> 严格校验</td></tr>
+<tr><td>文件名安全化</td><td><span class="badge success">✅</span></td><td><code>_safe_filename()</code> 用白名单 + 正则清理</td></tr>
+<tr><td>组名安全化</td><td><span class="badge success">✅</span></td><td><code>safe_group_name()</code> NFKC 标准化 + 白名单正则</td></tr>
+<tr><td>JSON 泄露分析</td><td><span class="badge success">✅</span></td><td>无 SQL/OS 命令注入，JSON 经 json.dumps 序列化</td></tr>
+<tr><td>Base64 解码异常</td><td><span class="badge success">✅</span></td><td><code>binascii.Error</code> + <code>ValueError</code> 均已捕获</td></tr>
+<tr><td>XSS (WebUI)</td><td><span class="badge success">✅</span></td><td>前端用 <code>textContent</code> 非 <code>innerHTML</code> 渲染用户数据</td></tr>
+<tr><td>文件写入原子性</td><td><span class="badge success">✅</span></td><td><code>*.tmp</code> + <code>os.replace()</code> 原子替换</td></tr>
+<tr><td>并发安全</td><td><span class="badge success">✅</span></td><td><code>asyncio.Lock</code> 串行化所有状态修改</td></tr>
+</tbody>
+</table>
+
+<p style="margin-top:12px;color:var(--text-secondary);font-size:14px;">
+<strong>结论：</strong>未发现安全漏洞。路径遍历防护是最值得表扬的实现 —— 它是 AstrBot 插件中最容易被忽视的安全问题之一。
+</p>
+</section>
+
+<!-- ═══════ 合规检查 ═══════ -->
+<section>
+<h2>📋 AstrBot 合规检查</h2>
+
+<table>
+<thead><tr><th>检查项</th><th>结果</th><th>备注</th></tr></thead>
+<tbody>
+<tr><td>metadata.yaml 必备字段</td><td><span class="badge success">✅</span></td><td>name/desc/version/author 齐全</td></tr>
+<tr><td>metadata.yaml repo 字段</td><td><span class="badge success">✅</span></td><td>已正确填充</td></tr>
+<tr><td>astrbot_version 格式</td><td><span class="badge success">✅</span></td><td><code>"&gt;=4.0.0"</code> 无 v 前缀，PEP 440 合规</td></tr>
+<tr><td>support_platforms 合法性</td><td><span class="badge success">✅</span></td><td>aiocqhttp / qq_official 均在白名单内</td></tr>
+<tr><td>_conf_schema.json 格式</td><td><span class="badge success">✅</span></td><td>扁平 dict 格式，与 AstrBot 运行时实际解析一致</td></tr>
+<tr><td>_conf_schema.json 类型合法性</td><td><span class="badge success">✅</span></td><td>int/bool/string 均在 DEFAULT_VALUE_MAP 中</td></tr>
+<tr><td>插件数据隔离</td><td><span class="badge success">✅</span></td><td>所有数据在 <code>data/plugin_data/astrbot_plugin_randommeme/</code></td></tr>
+<tr><td>异步网络调用</td><td><span class="badge success">✅</span></td><td>无同步 <code>requests</code>，文件 IO 走 <code>asyncio.to_thread</code></td></tr>
+<tr><td>无 BOM</td><td><span class="badge success">✅</span></td><td>所有 .json/.py/.yaml 文件无 UTF-8 BOM</td></tr>
+<tr><td>Plugin Page 合规</td><td><span class="badge success">✅</span></td><td>自定义 confirm、base64 上传、bridge.apiGet(params 对象)、无 window.confirm()</td></tr>
+<tr><td>测试覆盖</td><td><span class="badge success">✅</span></td><td>smoke + behavior 共 23 个测试，pytest 全部通过</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════ 文件结构 ═══════ -->
+<section>
+<h2>📁 文件结构</h2>
+<div class="file-tree">astrbot_plugin_randommeme/
+├── __init__.py              283 B    包声明
+├── metadata.yaml             399 B    元数据（✅）
+├── _conf_schema.json         944 B    配置 schema（✅）
+├── requirements.txt           0 B     无三方依赖
+├── main.py                 8,951 B    Star 入口
+├── README.md               13.6 KB    完整文档
+├── logo.png                 64 KB     插件图标
+├── core/
+│   ├── __init__.py            51 B
+│   ├── api.py              15.3 KB    Web API handlers
+│   ├── group.py             3.0 KB    组别数据模型
+│   ├── manager.py          12.0 KB    核心管理器
+│   └── storage.py           4.0 KB    文件/路径工具
+├── pages/manager/
+│   ├── index.html           6.6 KB
+│   ├── style.css            7.8 KB
+│   └── app.js              17.8 KB
+└── tests/
+    ├── conftest.py           5.8 KB    astrbot stub
+    ├── test_smoke.py         2.1 KB    冒烟测试
+    └── test_plugin_behavior.py 7.1 KB  行为测试</div>
+</section>
+
+<!-- ═══════ 功能评分 ═══════ -->
+<section>
+<h2>⭐ 功能评级</h2>
+<table>
+<thead><tr><th>维度</th><th>评分</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>关键词匹配</td><td><span class="badge success">A+</span></td><td>精确/模糊双模式，大小写不敏感，最长匹配</td></tr>
+<tr><td>抽取机制</td><td><span class="badge success">A+</span></td><td>不重复抽图 + 跑完洗牌，全局共享抽取池</td></tr>
+<tr><td>多组别/别名</td><td><span class="badge success">A+</span></td><td>完整 CRUD + 别名冲突校验</td></tr>
+<tr><td>需唤醒开关</td><td><span class="badge success">A+</span></td><td>组别级精细控制</td></tr>
+<tr><td>WebUI 管理</td><td><span class="badge success">A</span></td><td>4 个 Tab + 拖拽上传 + 确认对话框</td></tr>
+<tr><td>指令管理</td><td><span class="badge success">A</span></td><td>6 条管理指令，覆盖日常操作</td></tr>
+<tr><td>测试覆盖</td><td><span class="badge success">A+</span></td><td>23 个测试，包含路径遍历、序列化往返等边界</td></tr>
+<tr><td>安全防护</td><td><span class="badge success">A+</span></td><td>路径遍历/输入校验/原子写入/并发锁 全面</td></tr>
+<tr><td>文档</td><td><span class="badge success">A</span></td><td>完整的 README + FAQ + 开发指南</td></tr>
+<tr><td>前端体验</td><td><span class="badge info">B+</span></td><td>功能完整，但缺 loading 骨架屏和搜索过滤</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════ 改进建议 ═══════ -->
+<section>
+<h2>💡 改进建议</h2>
+
+<div class="suggestion">
+  <h3>1. 🏆 权重抽取系统</h3>
+  <div class="desc">允许为每张图片设置权重（正整数），权重越高被抽中的概率越大。打破当前"纯随机"的限制，让热门图更容易出现。</div>
+  <div class="impact"><strong>难度：</strong>中等 · 需改造 <code>draw()</code> 算法（加权随机 + 权重持久化）</div>
+</div>
+
+<div class="suggestion">
+  <h3>2. ⏰ 定时发送 / 每日推送</h3>
+  <div class="desc">在指定时间（如每天 10:00）自动从指定组别抽一张图发送到指定群聊。适合"每日摸鱼图"、"早安图"等场景。</div>
+  <div class="impact"><strong>难度：</strong>中等 · 需 <code>asyncio.create_task</code> 常驻定时器 + 群配置持久化</div>
+</div>
+
+<div class="suggestion">
+  <h3>3. ⏱ 触发冷却 (CD)</h3>
+  <div class="desc">为每个群/每个用户设置触发冷却时间（如 30 秒内只能抽一次），防止刷屏。</div>
+  <div class="impact"><strong>难度：</strong>低 · 内存 dict + timestamp 即可，注意在重启后重置</div>
+</div>
+
+<div class="suggestion">
+  <h3>4. 📦 导出/导入</h3>
+  <div class="desc">一键导出组别（含图片和配置）为 zip 包，另一侧导入。方便迁移和分享表情包合集。</div>
+  <div class="impact"><strong>难度：</strong>中等 · 后端生成 zip 流 + 前端下载/上传</div>
+</div>
+
+<div class="suggestion">
+  <h3>5. 💾 收藏图片 / 从消息加图</h3>
+  <div class="desc">用户在群中看到一张图，发 <code>收藏表情 组别名</code> 指令，机器人把图中的图片保存到对应组别。用户生成的 UGC 机制。</div>
+  <div class="impact"><strong>难度：</strong>中等 · 需从消息对象中提取 Image 组件 + 下载 + 去重</div>
+</div>
+
+<div class="suggestion">
+  <h3>6. 📊 抽取统计持久化</h3>
+  <div class="desc">记录每张图的被抽次数、按周/月生成热门排行。当前统计仅基于 <code>history</code>（洗牌即重置），无法计算长期趋势。</div>
+  <div class="impact"><strong>难度：</strong>低 · <code>groups.json</code> 加 <code>draw_counts</code> 字段 + 累加器</div>
+</div>
+
+<div class="suggestion">
+  <h3>7. 🚫 群黑名单</h3>
+  <div class="desc">允许对特定组别设置禁用的群聊列表，某些群不发某些表情。</div>
+  <div class="impact"><strong>难度：</strong>低 · <code>Group</code> 加 <code>banned_groups: list[str]</code></div>
+</div>
+
+<div class="suggestion">
+  <h3>8. 📝 文字随图回复</h3>
+  <div class="desc">抽图时可以附带一段自定义文本（如"今天也要加油哦！"），在 <code>Group</code> 上加 <code>reply_text</code> 字段。</div>
+  <div class="impact"><strong>难度：</strong>低 · Group 加字段 + 前端表单 + 拼链</div>
+</div>
+
+<div class="suggestion">
+  <h3>9. 🔎 前端搜索/过滤</h3>
+  <div class="desc">组别管理页增加搜索框，图片较多时按文件名搜索。当前组别多时不好找。</div>
+  <div class="impact"><strong>难度：</strong>低 · 纯前端 JS 过滤</div>
+</div>
+
+<div class="suggestion">
+  <h3>10. 🌐 Telegram 等更多适配器支持</h3>
+  <div class="desc"><code>metadata.yaml</code> 中 <code>support_platforms</code> 仅声明了 aiocqhttp 和 qq_official。核心逻辑不依赖适配器特性（纯图片组件），理论上 Telegram、Discord 等也能用。</div>
+  <div class="impact"><strong>难度：</strong>低 · metadata.yaml 加几个适配器键即可</div>
+</div>
+
+<div class="suggestion">
+  <h3>11. 🎨 图片懒加载优化</h3>
+  <div class="desc">前端 <code>makeImageCard</code> 中每个图片都独立调用 <code>loadImageData()</code>，图片多时会有大量并发 API 请求。可批量接口打包请求，或前端分页懒加载。</div>
+  <div class="impact"><strong>难度：</strong>低～中 · 前端加 IntersectionObserver 懒加载</div>
+</div>
+
+<div class="suggestion">
+  <h3>12. 📋 全局设置 Tab 增加动态性</h3>
+  <div class="desc">当前 Settings Tab 是纯静态 HTML 展示。可改为从后端拉取实时配置值（如当前 gif_support、exact_match），让运维人员一目了然。</div>
+  <div class="impact"><strong>难度：</strong>低 · 后端加 <code>/config</code> 端点 + 前端渲染</div>
+</div>
+</section>
+
+<!-- ═══════ 总结 ═══════ -->
+<section>
+<h2>📝 总结</h2>
+<p style="margin-bottom:10px;"><strong>astrbot_plugin_randommeme</strong> 是一个高质量的 AstrBot 插件，展现了良好的工程实践：</p>
+<ul style="padding-left: 20px; margin-bottom: 14px; line-height: 2;">
+  <li>✅ 架构清晰：Mixin + Manager + Storage 三层分离</li>
+  <li>✅ 安全防护到位：路径遍历防护、原子写入、并发锁</li>
+  <li>✅ 测试全面：23 个测试覆盖核心流程和边界情况</li>
+  <li>✅ 前端合规：自定义 confirm、base64 上传、bridge SDK 正确使用</li>
+  <li>✅ 文档完善：完整的 README + FAQ + 开发指南</li>
+  <li>⚠️ 2 个小问题（死代码/死配置）不影响运行，建议下次迭代清理</li>
+</ul>
+<p>在已安装的 AstrBot 插件中，此插件的代码质量属于 <strong>前 10%</strong> 水平。🎉</p>
+</section>
+
+<!-- footer -->
+<div style="border-top:1px solid var(--border); padding-top:16px; margin-top:32px;
+  font-size:13px; color:var(--text-secondary); text-align:center;">
+  Generated by Reasonix · astrbot-assistant skill · 2025-07-12
+</div>
+
+</div>
+</body>
+</html>

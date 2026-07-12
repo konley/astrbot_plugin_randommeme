@@ -366,6 +366,10 @@ body {
   z-index: 100;
 }
 
+.dialog-backdrop[hidden] {
+  display: none;
+}
+
 .dialog {
   background: var(--surface);
   border-radius: 10px;

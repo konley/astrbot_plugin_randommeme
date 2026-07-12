@@ -7,6 +7,7 @@ const state = {
   selected: new Set(),
   dialogMode: null,
   editing: null,
+  submitting: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -466,6 +467,7 @@ function closeGroupDialog() {
 
 async function onGroupSubmit(e) {
   e.preventDefault();
+  if (state.submitting) return;
   const name = $("#field-name").value.trim();
   const aliases = $("#field-aliases").value
     .split(/[\n,;]/)
@@ -475,6 +477,9 @@ async function onGroupSubmit(e) {
   const enabled = $("#field-enabled").checked;
 
   const isCreate = !state.editing;
+  const btn = $("#group-form button[type=submit]");
+  state.submitting = true;
+  btn.disabled = true;
   try {
     if (isCreate) {
       if (!name) { showToast("请输入组别名称", "error"); return; }
@@ -491,6 +496,9 @@ async function onGroupSubmit(e) {
     refreshStats();
   } catch (err) {
     showToast(`保存失败: ${err.message}`, "error");
+  } finally {
+    state.submitting = false;
+    btn.disabled = false;
   }
 }
 

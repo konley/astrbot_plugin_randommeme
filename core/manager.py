@@ -130,6 +130,8 @@ class MemeManager:
             for original, content in uploads:
                 if not original or not content:
                     continue
+                if not is_image_filename(original, gif_support=self._gif_support):
+                    continue
                 name = self._safe_filename(original)
                 name = self._dedupe_filename(name, existing)
                 target = gdir / name

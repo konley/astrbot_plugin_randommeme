@@ -213,6 +213,4 @@ class RandomMemePlugin(Star):
     def _build_image_chain(self, path: str) -> list | None:
         if not is_image_filename(path, gif_support=self.manager.gif_support):
             return None
-        if bool(self.conf.get("send_as_image_component", True)):
-            return [CompImage.fromFileSystem(path)]
-        return None
+        return [CompImage.fromFileSystem(path)]

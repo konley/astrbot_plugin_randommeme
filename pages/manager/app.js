@@ -354,6 +354,18 @@ function makeTextPreview(text) {
   return div;
 }
 
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",", 2)[1] : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function handleUploadFiles(files) {
   if (!state.currentGroup) {
     showToast("请先选择一个组别", "error");
@@ -362,9 +374,14 @@ async function handleUploadFiles(files) {
   let uploaded = 0;
   for (const file of files) {
     try {
-      await bridge.upload(
+      const base64 = await readFileAsBase64(file);
+      await bridge.apiPost(
         `groups/${encodeURIComponent(state.currentGroup)}/images`,
-        file
+        {
+          filename: file.name || "image",
+          mime_type: file.type || "image/png",
+          content_base64: base64,
+        }
       );
       uploaded += 1;
     } catch (err) {

@@ -16,6 +16,8 @@ Conventions:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import mimetypes
 from typing import Any
@@ -156,19 +158,57 @@ async def upload_images(manager: MemeManager, name: str):
     g, err = _require_group(manager, name)
     if err is not None:
         return err
-    files = await request.files
-    if not files:
-        return jsonify(
-            {"status": "error", "message": "缺少文件 (multipart field 'file')"}
-        ), 400
+
     uploads: list[tuple[str, bytes]] = []
-    for upload in files.values():
+
+    # 1) Try JSON body with base64-encoded content (bridge.apiPost)
+    body = (await request.get_json(silent=True)) or {}
+    if isinstance(body, dict) and body.get("content_base64"):
+        filename = str(body.get("filename") or "upload.png")
+        mime_type = str(body.get("mime_type") or "image/png")
+        if not is_image_filename(filename, gif_support=manager.gif_support):
+            ext = mimetypes.guess_extension(mime_type) or ".png"
+            filename = f"upload{ext}"
         try:
-            payload = upload.read()
-        finally:
-            upload.close()
+            payload = base64.b64decode(body["content_base64"])
+        except (binascii.Error, ValueError):
+            return jsonify({"status": "error", "message": "Base64 解码失败"}), 400
         if payload:
-            uploads.append((upload.filename or "upload.bin", payload))
+            uploads.append((filename, payload))
+    elif isinstance(body, dict) and isinstance(body.get("files"), list):
+        for item in body["files"]:
+            if not isinstance(item, dict):
+                continue
+            fn = str(item.get("filename") or "upload.png")
+            b64 = str(item.get("content_base64") or "")
+            mime = str(item.get("mime_type") or "image/png")
+            if not b64:
+                continue
+            if not is_image_filename(fn, gif_support=manager.gif_support):
+                ext = mimetypes.guess_extension(mime) or ".png"
+                fn = f"upload{ext}"
+            try:
+                payload = base64.b64decode(b64)
+            except (binascii.Error, ValueError):
+                continue
+            if payload:
+                uploads.append((fn, payload))
+
+    # 2) Fallback: multipart form upload (bridge.upload)
+    if not uploads:
+        files = await request.files
+        if not files:
+            return jsonify(
+                {"status": "error", "message": "没有有效图片内容（请使用 base64 JSON 或多文件表单）"}
+            ), 400
+        for upload in files.values():
+            try:
+                payload = upload.read()
+            finally:
+                upload.close()
+            if payload:
+                uploads.append((upload.filename or "upload.bin", payload))
+
     if not uploads:
         return jsonify({"status": "error", "message": "没有有效图片内容"}), 400
     try:

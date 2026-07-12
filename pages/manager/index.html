@@ -129,6 +129,18 @@
         </div>
       </div>
 
+      <!-- 确认对话框 -->
+      <div class="dialog-backdrop" id="confirm-dialog" hidden>
+        <div class="dialog" role="alertdialog" aria-modal="true">
+          <h2 id="confirm-title">确认操作</h2>
+          <p id="confirm-message"></p>
+          <div class="dialog-actions">
+            <button type="button" class="btn" id="btn-confirm-cancel">取消</button>
+            <button type="button" class="btn danger" id="btn-confirm-ok">确认</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Toast -->
       <div class="toast" id="toast" hidden></div>
     </div>

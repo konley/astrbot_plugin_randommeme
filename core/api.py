@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -160,6 +161,12 @@ class WebApiMixin:
             ["GET"],
             "Fetch raw image",
         )
+        self._register_webui_api(
+            "groups/<name>/images/data/<path:filename>",
+            self._api_image_data,
+            ["GET"],
+            "Get image as base64 data URL",
+        )
         # ----- history -----
         self._register_webui_api(
             "groups/<name>/reset",
@@ -307,6 +314,29 @@ class WebApiMixin:
         except ValueError as exc:
             return jsonify({"status": "error", "message": str(exc)}), 400
         return self._data({"removed": removed})
+
+    async def _api_image_data(self, name: str, filename: str = ""):
+        """Return image as base64 JSON for sandbox-safe preview."""
+        g, err = self._require_group(self.manager, name)
+        if err is not None:
+            return err
+        if not filename:
+            return jsonify({"status": "error", "message": "缺少 filename"}), 400
+        if not is_image_filename(filename, gif_support=self.manager.gif_support):
+            return jsonify({"status": "error", "message": "文件类型不受支持"}), 400
+        try:
+            target = safe_join(memes_dir(g.name), filename)
+        except ValueError:
+            return jsonify({"status": "error", "message": "非法路径"}), 400
+        if not target.is_file():
+            return jsonify({"status": "error", "message": "文件不存在"}), 404
+        ctype, _ = mimetypes.guess_type(target.name)
+        payload = await asyncio.to_thread(target.read_bytes)
+        return self._data({
+            "filename": filename,
+            "mime_type": ctype or "application/octet-stream",
+            "content_base64": base64.b64encode(payload).decode("ascii"),
+        })
 
     async def _api_fetch_image(self, name: str, filename: str = ""):
         """Serve an individual image file from ``memes/<group>`` for previews."""

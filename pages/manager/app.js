@@ -14,7 +14,6 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const PLUGIN_NAME = "astrbot_plugin_randommeme";
-const SUPPORTED_EXTS = ["jpg", "jpeg", "png", "webp", "bmp", "gif"];
 
 function unwrap(payload) {
   if (payload && typeof payload === "object" && "data" in payload) {
@@ -22,6 +21,33 @@ function unwrap(payload) {
   }
   return payload;
 }
+
+/* ------------------------------------------------------------------ confirm */
+
+function showConfirm(title, message) {
+  return new Promise((resolve) => {
+    $("#confirm-title").textContent = title;
+    $("#confirm-message").textContent = message;
+    $("#confirm-dialog").hidden = false;
+
+    function cleanup(result) {
+      $("#confirm-dialog").hidden = true;
+      $("#btn-confirm-ok").removeEventListener("click", onOk);
+      $("#btn-confirm-cancel").removeEventListener("click", onCancel);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+
+    $("#btn-confirm-ok").addEventListener("click", onOk);
+    $("#btn-confirm-cancel").addEventListener("click", onCancel);
+    $("#confirm-dialog").addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) cleanup(false);
+    });
+  });
+}
+
+/* ------------------------------------------------------------------ init */
 
 async function init() {
   const ctx = await bridge.ready();
@@ -57,10 +83,8 @@ function bindGroupEvents() {
     refreshGroups();
     refreshStats();
   });
-
   $("#btn-new-group").addEventListener("click", () => openGroupDialog());
   $("#btn-reset-all").addEventListener("click", onResetAll);
-
   $("#btn-group-cancel").addEventListener("click", closeGroupDialog);
   $("#group-dialog").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeGroupDialog();
@@ -106,6 +130,8 @@ function bindImageEvents() {
   $("#btn-reset-group-history").addEventListener("click", onResetGroupHistory);
 }
 
+/* ------------------------------------------------------------------ data */
+
 async function refreshGroups() {
   try {
     const result = unwrap(await bridge.apiGet("groups"));
@@ -126,6 +152,292 @@ async function refreshStats() {
     showToast(`加载统计失败: ${err.message}`, "error");
   }
 }
+
+/* ------------------------------------------------------------------ images */
+
+async function loadImages() {
+  if (!state.currentGroup) {
+    state.images = [];
+    renderImages();
+    return;
+  }
+  try {
+    const result = unwrap(await bridge.apiGet(`groups/${encodeURIComponent(state.currentGroup)}/images`));
+    state.images = result.images || [];
+  } catch (err) {
+    showToast(`加载图片失败: ${err.message}`, "error");
+    state.images = [];
+  }
+  renderImages();
+}
+
+function renderImages() {
+  const grid = $("#images-grid");
+  const empty = $("#images-empty");
+  const meta = $("#images-meta");
+  grid.innerHTML = "";
+  if (!state.currentGroup) {
+    empty.hidden = false;
+    empty.textContent = "请先选择一个组别。";
+    meta.textContent = "";
+    $("#btn-batch-delete").disabled = true;
+    $("#btn-reset-group-history").disabled = true;
+    return;
+  }
+  empty.hidden = state.images.length > 0;
+  empty.textContent = "该组别下还没有图片，去上传几张吧。";
+  meta.textContent = `共 ${state.images.length} 张`;
+  $("#btn-batch-delete").disabled = state.selected.size === 0;
+  $("#btn-reset-group-history").disabled = false;
+
+  for (const filename of state.images) {
+    grid.appendChild(makeImageCard(state.currentGroup, filename));
+  }
+}
+
+function makeImageCard(group, filename) {
+  const card = document.createElement("div");
+  card.className = "image-card";
+
+  const toggle = document.createElement("button");
+  toggle.className = "select-toggle";
+  toggle.textContent = "✓";
+  toggle.title = "选中";
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (state.selected.has(filename)) {
+      state.selected.delete(filename);
+      card.classList.remove("selected");
+    } else {
+      state.selected.add(filename);
+      card.classList.add("selected");
+    }
+    $("#btn-batch-delete").disabled = state.selected.size === 0;
+  });
+  card.appendChild(toggle);
+
+  const img = document.createElement("img");
+  img.alt = filename;
+  img.loading = "lazy";
+  // Load image via bridge API (direct URL fails in sandboxed iframe)
+  loadImageData(group, filename).then((dataUrl) => {
+    img.src = dataUrl;
+  }).catch(() => {
+    img.replaceWith(makeTextPreview(filename));
+  });
+  card.appendChild(img);
+
+  const meta = document.createElement("div");
+  meta.className = "image-meta";
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = filename;
+  name.title = filename;
+  const del = document.createElement("button");
+  del.textContent = "删除";
+  del.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onDeleteImage(group, filename);
+  });
+  meta.append(name, del);
+  card.appendChild(meta);
+  return card;
+}
+
+async function loadImageData(group, filename) {
+  const result = unwrap(await bridge.apiGet(
+    `groups/${encodeURIComponent(group)}/images/data/${encodeURIComponent(filename)}`
+  ));
+  return `data:${result.mime_type || "image/png"};base64,${result.content_base64}`;
+}
+
+function makeTextPreview(text) {
+  const div = document.createElement("div");
+  div.style.padding = "32px 8px";
+  div.style.fontSize = "12px";
+  div.style.color = "var(--text-muted)";
+  div.style.textAlign = "center";
+  div.style.wordBreak = "break-all";
+  div.textContent = text;
+  return div;
+}
+
+/* ------------------------------------------------------------------ upload */
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",", 2)[1] : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleUploadFiles(files) {
+  if (!state.currentGroup) {
+    showToast("请先选择一个组别", "error");
+    return;
+  }
+  let uploaded = 0;
+  for (const file of files) {
+    try {
+      const base64 = await readFileAsBase64(file);
+      await bridge.apiPost(
+        `groups/${encodeURIComponent(state.currentGroup)}/images`,
+        {
+          filename: file.name || "image",
+          mime_type: file.type || "image/png",
+          content_base64: base64,
+        }
+      );
+      uploaded += 1;
+    } catch (err) {
+      showToast(`上传 ${file.name} 失败: ${err.message}`, "error");
+    }
+  }
+  if (uploaded > 0) showToast(`成功上传 ${uploaded} 张`, "success");
+  await loadImages();
+  await refreshGroups();
+  refreshStats();
+}
+
+/* ------------------------------------------------------------------ actions */
+
+async function onDeleteImage(group, filename) {
+  if (!await showConfirm("删除图片", `确定删除 "${filename}" 吗？`)) return;
+  try {
+    await bridge.apiPost(`groups/${encodeURIComponent(group)}/images/delete`, {
+      filenames: [filename],
+    });
+    showToast("已删除", "success");
+    state.selected.delete(filename);
+    await loadImages();
+    await refreshGroups();
+    refreshStats();
+  } catch (err) {
+    showToast(`删除失败: ${err.message}`, "error");
+  }
+}
+
+async function onBatchDelete() {
+  if (state.selected.size === 0) return;
+  const filenames = Array.from(state.selected);
+  if (!await showConfirm("批量删除", `确定要批量删除 ${filenames.length} 张图片吗？`)) return;
+  try {
+    const result = unwrap(await bridge.apiPost(
+      `groups/${encodeURIComponent(state.currentGroup)}/images/delete`,
+      { filenames }
+    ));
+    showToast(`已删除 ${result.removed.length} 张`, "success");
+    state.selected.clear();
+    await loadImages();
+    await refreshGroups();
+    refreshStats();
+  } catch (err) {
+    showToast(`批量删除失败: ${err.message}`, "error");
+  }
+}
+
+async function onResetGroupHistory() {
+  if (!state.currentGroup) return;
+  if (!await showConfirm("重置序列", `重置组别 "${state.currentGroup}" 的抽取序列？`)) return;
+  try {
+    await bridge.apiPost(`groups/${encodeURIComponent(state.currentGroup)}/reset`);
+    showToast("抽取序列已重置", "success");
+    refreshStats();
+  } catch (err) {
+    showToast(`重置失败: ${err.message}`, "error");
+  }
+}
+
+async function onResetAll() {
+  if (!await showConfirm("重置全部", "重置所有组别的抽取序列？（不会删除任何图片）")) return;
+  try {
+    const result = unwrap(await bridge.apiPost("reset"));
+    showToast(`已重置 ${result.groups_cleared} 个组别`, "success");
+    refreshStats();
+  } catch (err) {
+    showToast(`重置失败: ${err.message}`, "error");
+  }
+}
+
+async function onDeleteGroup(g) {
+  if (!await showConfirm("删除组别", `删除组别 "${g.name}"？该组别下所有图片也会被删除，此操作不可恢复。`)) return;
+  try {
+    await bridge.apiPost(`groups/${encodeURIComponent(g.name)}/delete`);
+    showToast("组别已删除", "success");
+    if (state.currentGroup === g.name) {
+      state.currentGroup = null;
+    }
+    state.selected.clear();
+    await refreshGroups();
+    refreshStats();
+  } catch (err) {
+    showToast(`删除失败: ${err.message}`, "error");
+  }
+}
+
+/* ------------------------------------------------------------------ group dialog */
+
+function openGroupDialog(group = null) {
+  state.dialogMode = group ? "edit" : "create";
+  state.editing = group;
+  $("#group-dialog-title").textContent = group ? `编辑组别: ${group.name}` : "新建组别";
+  $("#field-name").value = group?.name || "";
+  $("#field-name").disabled = !!group;
+  $("#field-aliases").value = (group?.aliases || []).join("\n");
+  $("#field-require-wake").checked = !!group?.require_wake;
+  $("#field-enabled").checked = group ? !!group.enabled : true;
+  $("#field-enabled-row").hidden = !group;
+  $("#group-dialog").hidden = false;
+}
+
+function closeGroupDialog() {
+  $("#group-dialog").hidden = true;
+  state.editing = null;
+}
+
+async function onGroupSubmit(e) {
+  e.preventDefault();
+  if (state.submitting) return;
+  const name = $("#field-name").value.trim();
+  const aliases = $("#field-aliases").value
+    .split(/[\n,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const require_wake = $("#field-require-wake").checked;
+  const enabled = $("#field-enabled").checked;
+
+  const isCreate = !state.editing;
+  const btn = $("#group-form button[type=submit]");
+  state.submitting = true;
+  btn.disabled = true;
+  try {
+    if (isCreate) {
+      if (!name) { showToast("请输入组别名称", "error"); return; }
+      await bridge.apiPost("groups", { name, aliases, require_wake });
+      showToast(`已创建: ${name}`, "success");
+    } else {
+      await bridge.apiPost(`groups/${encodeURIComponent(state.editing.name)}/update`, {
+        aliases, require_wake, enabled,
+      });
+      showToast(`已更新: ${state.editing.name}`, "success");
+    }
+    closeGroupDialog();
+    await refreshGroups();
+    refreshStats();
+  } catch (err) {
+    showToast(`保存失败: ${err.message}`, "error");
+  } finally {
+    state.submitting = false;
+    btn.disabled = false;
+  }
+}
+
+/* ------------------------------------------------------------------ render helpers */
 
 function renderGroups() {
   const tbody = $("#groups-table tbody");
@@ -201,18 +513,9 @@ function renderSettings() {
   list.innerHTML = "";
   const rows = [
     ["已注册组别", `${state.groups.length}`],
-    [
-      "插件名（用于 bridge API 前缀）",
-      PLUGIN_NAME,
-    ],
-    [
-      "支持的图片格式",
-      SUPPORTED_EXTS.map((e) => `.${e}`).join(" / "),
-    ],
-    [
-      "抽取规则",
-      "随机 + 不重复；跑完一轮自动重置（全局共享抽取池）",
-    ],
+    ["插件名（用于 bridge API 前缀）", PLUGIN_NAME],
+    ["支持的图片格式", ".jpg / .jpeg / .png / .webp / .bmp / .gif"],
+    ["抽取规则", "随机 + 不重复；跑完一轮自动重置（全局共享抽取池）"],
   ];
   for (const [k, v] of rows) {
     const dt = document.createElement("dt");
@@ -251,278 +554,7 @@ function renderStats(stats) {
   }
 }
 
-async function loadImages() {
-  if (!state.currentGroup) {
-    state.images = [];
-    renderImages();
-    return;
-  }
-  try {
-    const result = unwrap(await bridge.apiGet(`groups/${encodeURIComponent(state.currentGroup)}/images`));
-    state.images = result.images || [];
-  } catch (err) {
-    showToast(`加载图片失败: ${err.message}`, "error");
-    state.images = [];
-  }
-  renderImages();
-}
-
-function renderImages() {
-  const grid = $("#images-grid");
-  const empty = $("#images-empty");
-  const meta = $("#images-meta");
-  grid.innerHTML = "";
-  if (!state.currentGroup) {
-    empty.hidden = false;
-    empty.textContent = "请先选择一个组别。";
-    meta.textContent = "";
-    $("#btn-batch-delete").disabled = true;
-    $("#btn-reset-group-history").disabled = true;
-    return;
-  }
-  empty.hidden = state.images.length > 0;
-  empty.textContent = "该组别下还没有图片，去上传几张吧。";
-  meta.textContent = `共 ${state.images.length} 张`;
-  $("#btn-batch-delete").disabled = state.selected.size === 0;
-  $("#btn-reset-group-history").disabled = false;
-
-  for (const filename of state.images) {
-    grid.appendChild(makeImageCard(state.currentGroup, filename));
-  }
-}
-
-function makeImageCard(group, filename) {
-  const card = document.createElement("div");
-  card.className = "image-card";
-
-  const toggle = document.createElement("button");
-  toggle.className = "select-toggle";
-  toggle.textContent = "✓";
-  toggle.title = "选中";
-  toggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (state.selected.has(filename)) {
-      state.selected.delete(filename);
-      card.classList.remove("selected");
-    } else {
-      state.selected.add(filename);
-      card.classList.add("selected");
-    }
-    $("#btn-batch-delete").disabled = state.selected.size === 0;
-  });
-  card.appendChild(toggle);
-
-  const img = document.createElement("img");
-  img.alt = filename;
-  img.loading = "lazy";
-  const url = buildImageUrl(group, filename);
-  img.src = url;
-  img.addEventListener("error", () => {
-    img.replaceWith(makeTextPreview(filename));
-  });
-  card.appendChild(img);
-
-  const meta = document.createElement("div");
-  meta.className = "image-meta";
-  const name = document.createElement("span");
-  name.className = "name";
-  name.textContent = filename;
-  name.title = filename;
-  const del = document.createElement("button");
-  del.textContent = "删除";
-  del.addEventListener("click", (e) => {
-    e.stopPropagation();
-    onDeleteImage(group, filename);
-  });
-  meta.append(name, del);
-  card.appendChild(meta);
-  return card;
-}
-
-function buildImageUrl(group, filename) {
-  return `/api/plug/${PLUGIN_NAME}/groups/${encodeURIComponent(group)}/images/${encodeURIComponent(filename)}`;
-}
-
-function makeTextPreview(text) {
-  const div = document.createElement("div");
-  div.style.padding = "32px 8px";
-  div.style.fontSize = "12px";
-  div.style.color = "var(--text-muted)";
-  div.style.textAlign = "center";
-  div.style.wordBreak = "break-all";
-  div.textContent = text;
-  return div;
-}
-
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      resolve(result.includes(",") ? result.split(",", 2)[1] : result);
-    };
-    reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function handleUploadFiles(files) {
-  if (!state.currentGroup) {
-    showToast("请先选择一个组别", "error");
-    return;
-  }
-  let uploaded = 0;
-  for (const file of files) {
-    try {
-      const base64 = await readFileAsBase64(file);
-      await bridge.apiPost(
-        `groups/${encodeURIComponent(state.currentGroup)}/images`,
-        {
-          filename: file.name || "image",
-          mime_type: file.type || "image/png",
-          content_base64: base64,
-        }
-      );
-      uploaded += 1;
-    } catch (err) {
-      showToast(`上传 ${file.name} 失败: ${err.message}`, "error");
-    }
-  }
-  if (uploaded > 0) showToast(`成功上传 ${uploaded} 张`, "success");
-  await loadImages();
-  await refreshGroups();
-  refreshStats();
-}
-
-async function onDeleteImage(group, filename) {
-  if (!confirm(`确定删除 "${filename}" 吗？`)) return;
-  try {
-    await bridge.apiPost(`groups/${encodeURIComponent(group)}/images/delete`, {
-      filenames: [filename],
-    });
-    showToast("已删除", "success");
-    state.selected.delete(filename);
-    await loadImages();
-    await refreshGroups();
-    refreshStats();
-  } catch (err) {
-    showToast(`删除失败: ${err.message}`, "error");
-  }
-}
-
-async function onBatchDelete() {
-  if (state.selected.size === 0) return;
-  const filenames = Array.from(state.selected);
-  if (!confirm(`确定要批量删除 ${filenames.length} 张图片吗？`)) return;
-  try {
-    const result = unwrap(await bridge.apiPost(
-      `groups/${encodeURIComponent(state.currentGroup)}/images/delete`,
-      { filenames }
-    ));
-    showToast(`已删除 ${result.removed.length} 张`, "success");
-    state.selected.clear();
-    await loadImages();
-    await refreshGroups();
-    refreshStats();
-  } catch (err) {
-    showToast(`批量删除失败: ${err.message}`, "error");
-  }
-}
-
-async function onResetGroupHistory() {
-  if (!state.currentGroup) return;
-  if (!confirm(`重置组别 "${state.currentGroup}" 的抽取序列？`)) return;
-  try {
-    await bridge.apiPost(`groups/${encodeURIComponent(state.currentGroup)}/reset`);
-    showToast("抽取序列已重置", "success");
-    refreshStats();
-  } catch (err) {
-    showToast(`重置失败: ${err.message}`, "error");
-  }
-}
-
-async function onResetAll() {
-  if (!confirm("重置所有组别的抽取序列？（不会删除任何图片）")) return;
-  try {
-    const result = unwrap(await bridge.apiPost("reset"));
-    showToast(`已重置 ${result.groups_cleared} 个组别`, "success");
-    refreshStats();
-  } catch (err) {
-    showToast(`重置失败: ${err.message}`, "error");
-  }
-}
-
-async function onDeleteGroup(g) {
-  if (!confirm(`删除组别 "${g.name}"？该组别下所有图片也会被删除，此操作不可恢复。`))
-    return;
-  try {
-    await bridge.apiPost(`groups/${encodeURIComponent(g.name)}/delete`);
-    showToast("组别已删除", "success");
-    if (state.currentGroup === g.name) {
-      state.currentGroup = null;
-    }
-    state.selected.clear();
-    await refreshGroups();
-    refreshStats();
-  } catch (err) {
-    showToast(`删除失败: ${err.message}`, "error");
-  }
-}
-
-function openGroupDialog(group = null) {
-  state.dialogMode = group ? "edit" : "create";
-  state.editing = group;
-  $("#group-dialog-title").textContent = group ? `编辑组别: ${group.name}` : "新建组别";
-  $("#field-name").value = group?.name || "";
-  $("#field-name").disabled = !!group;
-  $("#field-aliases").value = (group?.aliases || []).join("\n");
-  $("#field-require-wake").checked = !!group?.require_wake;
-  $("#field-enabled").checked = group ? !!group.enabled : true;
-  $("#field-enabled-row").hidden = !group;
-  $("#group-dialog").hidden = false;
-}
-
-function closeGroupDialog() {
-  $("#group-dialog").hidden = true;
-  state.editing = null;
-}
-
-async function onGroupSubmit(e) {
-  e.preventDefault();
-  if (state.submitting) return;
-  const name = $("#field-name").value.trim();
-  const aliases = $("#field-aliases").value
-    .split(/[\n,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const require_wake = $("#field-require-wake").checked;
-  const enabled = $("#field-enabled").checked;
-
-  const isCreate = !state.editing;
-  const btn = $("#group-form button[type=submit]");
-  state.submitting = true;
-  btn.disabled = true;
-  try {
-    if (isCreate) {
-      if (!name) { showToast("请输入组别名称", "error"); return; }
-      await bridge.apiPost("groups", { name, aliases, require_wake });
-      showToast(`已创建: ${name}`, "success");
-    } else {
-      await bridge.apiPost(`groups/${encodeURIComponent(state.editing.name)}/update`, {
-        aliases, require_wake, enabled,
-      });
-      showToast(`已更新: ${state.editing.name}`, "success");
-    }
-    closeGroupDialog();
-    await refreshGroups();
-    refreshStats();
-  } catch (err) {
-    showToast(`保存失败: ${err.message}`, "error");
-  } finally {
-    state.submitting = false;
-    btn.disabled = false;
-  }
-}
+/* ------------------------------------------------------------------ toast */
 
 let toastTimer = null;
 function showToast(msg, kind) {

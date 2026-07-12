@@ -156,16 +156,16 @@ class WebApiMixin:
             "Delete images",
         )
         self._register_webui_api(
+            "groups/<name>/images/data/<filename>",
+            self._api_image_data,
+            ["GET"],
+            "Get image as base64 data URL",
+        )
+        self._register_webui_api(
             "groups/<name>/images/<path:filename>",
             self._api_fetch_image,
             ["GET"],
             "Fetch raw image",
-        )
-        self._register_webui_api(
-            "groups/<name>/images/data/<path:filename>",
-            self._api_image_data,
-            ["GET"],
-            "Get image as base64 data URL",
         )
         # ----- history -----
         self._register_webui_api(

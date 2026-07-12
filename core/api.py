@@ -156,7 +156,7 @@ async def upload_images(manager: MemeManager, name: str):
     g, err = _require_group(manager, name)
     if err is not None:
         return err
-    files = request.files
+    files = await request.files
     if not files:
         return jsonify(
             {"status": "error", "message": "缺少文件 (multipart field 'file')"}
@@ -164,7 +164,7 @@ async def upload_images(manager: MemeManager, name: str):
     uploads: list[tuple[str, bytes]] = []
     for upload in files.values():
         try:
-            payload = await upload.read()
+            payload = upload.read()
         finally:
             upload.close()
         if payload:

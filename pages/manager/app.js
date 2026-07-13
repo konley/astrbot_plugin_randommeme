@@ -1,4 +1,4 @@
-﻿const bridge = window.AstrBotPluginPage;
+const bridge = window.AstrBotPluginPage;
 
 const state = {
   groups: [],

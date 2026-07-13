@@ -51,7 +51,7 @@ function showConfirm(title, message) {
 
 async function init() {
   const ctx = await bridge.ready();
-  document.title = bridge.t("pages.manager.title", "闅忔満琛ㄦ儏鍖?路 绠＄悊");
+  document.title = bridge.t("pages.manager.title", "随机表情包 · 管理");
   void ctx;
   bindTabs();
   bindGroupEvents();
@@ -96,10 +96,10 @@ function bindImageEvents() {
   $("#image-group-select").addEventListener("change", (e) => {
     state.currentGroup = e.target.value;
     state.selected.clear();
-    // 绔嬪嵆娓呯┖缃戞牸鏄剧ず鍔犺浇鐘舵€?
+    // 立即清空网格显示加载状态
     $("#images-grid").innerHTML = "";
     $("#images-empty").hidden = false;
-    $("#images-empty").textContent = "鍔犺浇涓€?;
+    $("#images-empty").textContent = "加载中…";
     $("#images-meta").textContent = "";
     loadImages();
   });
@@ -145,7 +145,7 @@ async function refreshGroups() {
     renderGroupSelect();
     renderSettings();
   } catch (err) {
-    showToast(`鍔犺浇缁勫埆澶辫触: ${err.message}`, "error");
+    showToast(`加载组别失败: ${err.message}`, "error");
   }
 }
 
@@ -154,7 +154,7 @@ async function refreshStats() {
     const stats = unwrap(await bridge.apiGet("stats"));
     renderStats(stats);
   } catch (err) {
-    showToast(`鍔犺浇缁熻澶辫触: ${err.message}`, "error");
+    showToast(`加载统计失败: ${err.message}`, "error");
   }
 }
 
@@ -170,7 +170,7 @@ async function loadImages() {
     const result = unwrap(await bridge.apiGet(`groups/${state.currentGroup}/images`));
     state.images = result.images || [];
   } catch (err) {
-    showToast(`鍔犺浇鍥剧墖澶辫触: ${err.message}`, "error");
+    showToast(`加载图片失败: ${err.message}`, "error");
     state.images = [];
   }
   renderImages();
@@ -183,15 +183,15 @@ function renderImages() {
   grid.innerHTML = "";
   if (!state.currentGroup) {
     empty.hidden = false;
-    empty.textContent = "璇峰厛閫夋嫨涓€涓粍鍒€?;
+    empty.textContent = "请先选择一个组别。";
     meta.textContent = "";
     $("#btn-batch-delete").disabled = true;
     $("#btn-reset-group-history").disabled = true;
     return;
   }
   empty.hidden = state.images.length > 0;
-  empty.textContent = "璇ョ粍鍒笅杩樻病鏈夊浘鐗囷紝鍘讳笂浼犲嚑寮犲惂銆?;
-  meta.textContent = `鍏?${state.images.length} 寮燻;
+  empty.textContent = "该组别下还没有图片，去上传几张吧。";
+  meta.textContent = `共 ${state.images.length} 张`;
   $("#btn-batch-delete").disabled = state.selected.size === 0;
   $("#btn-reset-group-history").disabled = false;
 
@@ -206,8 +206,8 @@ function makeImageCard(group, filename) {
 
   const toggle = document.createElement("button");
   toggle.className = "select-toggle";
-  toggle.textContent = "鉁?;
-  toggle.title = "閫変腑";
+  toggle.textContent = "✓";
+  toggle.title = "选中";
   toggle.addEventListener("click", (e) => {
     e.stopPropagation();
     if (state.selected.has(filename)) {
@@ -239,7 +239,7 @@ function makeImageCard(group, filename) {
   name.textContent = filename;
   name.title = filename;
   const del = document.createElement("button");
-  del.textContent = "鍒犻櫎";
+  del.textContent = "删除";
   del.addEventListener("click", (e) => {
     e.stopPropagation();
     onDeleteImage(group, filename);
@@ -277,14 +277,14 @@ function readFileAsBase64(file) {
       const result = String(reader.result || "");
       resolve(result.includes(",") ? result.split(",", 2)[1] : result);
     };
-    reader.onerror = () => reject(reader.error || new Error("璇诲彇鏂囦欢澶辫触"));
+    reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
     reader.readAsDataURL(file);
   });
 }
 
 async function handleUploadFiles(files) {
   if (!state.currentGroup) {
-    showToast("璇峰厛閫夋嫨涓€涓粍鍒?, "error");
+    showToast("请先选择一个组别", "error");
     return;
   }
   let uploaded = 0;
@@ -301,10 +301,10 @@ async function handleUploadFiles(files) {
       );
       uploaded += 1;
     } catch (err) {
-      showToast(`涓婁紶 ${file.name} 澶辫触: ${err.message}`, "error");
+      showToast(`上传 ${file.name} 失败: ${err.message}`, "error");
     }
   }
-  if (uploaded > 0) showToast(`鎴愬姛涓婁紶 ${uploaded} 寮燻, "success");
+  if (uploaded > 0) showToast(`成功上传 ${uploaded} 张`, "success");
   await loadImages();
   await refreshGroups();
   refreshStats();
@@ -313,68 +313,68 @@ async function handleUploadFiles(files) {
 /* ------------------------------------------------------------------ actions */
 
 async function onDeleteImage(group, filename) {
-  if (!await showConfirm("鍒犻櫎鍥剧墖", `纭畾鍒犻櫎 "${filename}" 鍚楋紵`)) return;
+  if (!await showConfirm("删除图片", `确定删除 "${filename}" 吗？`)) return;
   try {
     await bridge.apiPost(`groups/${group}/images/delete`, {
       filenames: [filename],
     });
-    showToast("宸插垹闄?, "success");
+    showToast("已删除", "success");
     state.selected.delete(filename);
     await loadImages();
     await refreshGroups();
     refreshStats();
   } catch (err) {
-    showToast(`鍒犻櫎澶辫触: ${err.message}`, "error");
+    showToast(`删除失败: ${err.message}`, "error");
   }
 }
 
 async function onBatchDelete() {
   if (state.selected.size === 0) return;
   const filenames = Array.from(state.selected);
-  if (!await showConfirm("鎵归噺鍒犻櫎", `纭畾瑕佹壒閲忓垹闄?${filenames.length} 寮犲浘鐗囧悧锛焋)) return;
+  if (!await showConfirm("批量删除", `确定要批量删除 ${filenames.length} 张图片吗？`)) return;
   try {
     const result = unwrap(await bridge.apiPost(
       `groups/${state.currentGroup}/images/delete`,
       { filenames }
     ));
-    showToast(`宸插垹闄?${result.removed.length} 寮燻, "success");
+    showToast(`已删除 ${result.removed.length} 张`, "success");
     state.selected.clear();
     await loadImages();
     await refreshGroups();
     refreshStats();
   } catch (err) {
-    showToast(`鎵归噺鍒犻櫎澶辫触: ${err.message}`, "error");
+    showToast(`批量删除失败: ${err.message}`, "error");
   }
 }
 
 async function onResetGroupHistory() {
   if (!state.currentGroup) return;
-  if (!await showConfirm("閲嶇疆搴忓垪", `閲嶇疆缁勫埆 "${state.currentGroup}" 鐨勬娊鍙栧簭鍒楋紵`)) return;
+  if (!await showConfirm("重置序列", `重置组别 "${state.currentGroup}" 的抽取序列？`)) return;
   try {
     await bridge.apiPost(`groups/${state.currentGroup}/reset`);
-    showToast("鎶藉彇搴忓垪宸查噸缃?, "success");
+    showToast("抽取序列已重置", "success");
     refreshStats();
   } catch (err) {
-    showToast(`閲嶇疆澶辫触: ${err.message}`, "error");
+    showToast(`重置失败: ${err.message}`, "error");
   }
 }
 
 async function onResetAll() {
-  if (!await showConfirm("閲嶇疆鍏ㄩ儴", "閲嶇疆鎵€鏈夌粍鍒殑鎶藉彇搴忓垪锛燂紙涓嶄細鍒犻櫎浠讳綍鍥剧墖锛?)) return;
+  if (!await showConfirm("重置全部", "重置所有组别的抽取序列？（不会删除任何图片）")) return;
   try {
     const result = unwrap(await bridge.apiPost("reset"));
-    showToast(`宸查噸缃?${result.groups_cleared} 涓粍鍒玚, "success");
+    showToast(`已重置 ${result.groups_cleared} 个组别`, "success");
     refreshStats();
   } catch (err) {
-    showToast(`閲嶇疆澶辫触: ${err.message}`, "error");
+    showToast(`重置失败: ${err.message}`, "error");
   }
 }
 
 async function onDeleteGroup(g) {
-  if (!await showConfirm("鍒犻櫎缁勫埆", `鍒犻櫎缁勫埆 "${g.name}"锛熻缁勫埆涓嬫墍鏈夊浘鐗囦篃浼氳鍒犻櫎锛屾鎿嶄綔涓嶅彲鎭㈠銆俙)) return;
+  if (!await showConfirm("删除组别", `删除组别 "${g.name}"？该组别下所有图片也会被删除，此操作不可恢复。`)) return;
   try {
     await bridge.apiPost(`groups/${g.name}/delete`);
-    showToast("缁勫埆宸插垹闄?, "success");
+    showToast("组别已删除", "success");
     if (state.currentGroup === g.name) {
       state.currentGroup = null;
     }
@@ -382,7 +382,7 @@ async function onDeleteGroup(g) {
     await refreshGroups();
     refreshStats();
   } catch (err) {
-    showToast(`鍒犻櫎澶辫触: ${err.message}`, "error");
+    showToast(`删除失败: ${err.message}`, "error");
   }
 }
 
@@ -391,7 +391,7 @@ async function onDeleteGroup(g) {
 function openGroupDialog(group = null) {
   state.dialogMode = group ? "edit" : "create";
   state.editing = group;
-  $("#group-dialog-title").textContent = group ? `缂栬緫缁勫埆: ${group.name}` : "鏂板缓缁勫埆";
+  $("#group-dialog-title").textContent = group ? `编辑组别: ${group.name}` : "新建组别";
   $("#field-name").value = group?.name || "";
   $("#field-name").disabled = !!group;
   $("#field-aliases").value = (group?.aliases || []).join("\n");
@@ -422,24 +422,24 @@ async function onGroupSubmit(e) {
   const btnText = btn.textContent;
   state.submitting = true;
   btn.disabled = true;
-  btn.textContent = "淇濆瓨涓€?;
+  btn.textContent = "保存中…";
   try {
     if (isCreate) {
-      if (!name) { showToast("璇疯緭鍏ョ粍鍒悕绉?, "error"); return; }
+      if (!name) { showToast("请输入组别名称", "error"); return; }
       await bridge.apiPost("groups", { name, aliases, require_wake });
-      showToast(`宸插垱寤? ${name}`, "success");
+      showToast(`已创建: ${name}`, "success");
     } else {
       await bridge.apiPost(`groups/${state.editing.name}/update`, {
         aliases, require_wake, enabled,
       });
-      showToast(`宸叉洿鏂? ${state.editing.name}`, "success");
+      showToast(`已更新: ${state.editing.name}`, "success");
     }
     await new Promise(r => setTimeout(r, 600));
     closeGroupDialog();
     await refreshGroups();
     refreshStats();
   } catch (err) {
-    showToast(`淇濆瓨澶辫触: ${err.message}`, "error");
+    showToast(`保存失败: ${err.message}`, "error");
   } finally {
     state.submitting = false;
     btn.disabled = false;
@@ -464,7 +464,7 @@ function renderGroups() {
     tr.appendChild(td((g.aliases || []).join(" / ") || "-"));
     tr.appendChild(td(`${g.image_count}`));
     tr.appendChild(makeStatusPillCell(g.enabled));
-    tr.appendChild(makeStatusPillCell(g.require_wake, "wake", "闇€鍞ら啋", "鏃犻渶鍞ら啋"));
+    tr.appendChild(makeStatusPillCell(g.require_wake, "wake", "需唤醒", "无需唤醒"));
     tr.appendChild(makeActionCell(g));
     tbody.appendChild(tr);
   }
@@ -481,7 +481,7 @@ function makeStatusPillCell(value, kind, onText, offText) {
   const cell = document.createElement("td");
   const pill = document.createElement("span");
   pill.className = "status-pill " + (value ? "on" : "off");
-  pill.textContent = value ? onText || "鍚敤" : offText || "绂佺敤";
+  pill.textContent = value ? onText || "启用" : offText || "禁用";
   cell.appendChild(pill);
   return cell;
 }
@@ -492,13 +492,13 @@ function makeActionCell(g) {
 
   const editBtn = document.createElement("button");
   editBtn.className = "btn";
-  editBtn.textContent = "缂栬緫";
+  editBtn.textContent = "编辑";
   editBtn.style.marginRight = "6px";
   editBtn.addEventListener("click", () => openGroupDialog(g));
 
   const delBtn = document.createElement("button");
   delBtn.className = "btn danger";
-  delBtn.textContent = "鍒犻櫎";
+  delBtn.textContent = "删除";
   delBtn.addEventListener("click", () => onDeleteGroup(g));
 
   cell.append(editBtn, delBtn);
@@ -507,7 +507,7 @@ function makeActionCell(g) {
 
 function renderGroupSelect() {
   const select = $("#image-group-select");
-  const prevValue = select.value;  // 璁颁綇褰撳墠閫変腑鐨勫€?
+  const prevValue = select.value;  // 记住当前选中的值
   select.innerHTML = "";
   for (const g of state.groups) {
     const opt = document.createElement("option");
@@ -515,7 +515,7 @@ function renderGroupSelect() {
     opt.textContent = `${g.name} (${g.image_count})`;
     select.appendChild(opt);
   }
-  // 濡傛灉涔嬪墠閫変腑鐨勭粍鍒繕鍦ㄥ垪琛ㄤ腑锛屼繚鎸侀€変腑锛涘惁鍒欓€夌涓€涓?
+  // 如果之前选中的组别还在列表中，保持选中；否则选第一个
   if (prevValue && [...select.options].some(o => o.value === prevValue)) {
     select.value = prevValue;
   }
@@ -527,10 +527,10 @@ function renderSettings() {
   const list = $("#settings-list");
   list.innerHTML = "";
   const rows = [
-    ["宸叉敞鍐岀粍鍒?, `${state.groups.length}`],
-    ["鎻掍欢鍚嶏紙鐢ㄤ簬 bridge API 鍓嶇紑锛?, PLUGIN_NAME],
-    ["鏀寔鐨勫浘鐗囨牸寮?, ".jpg / .jpeg / .png / .webp / .bmp / .gif"],
-    ["鎶藉彇瑙勫垯", "闅忔満 + 涓嶉噸澶嶏紱璺戝畬涓€杞嚜鍔ㄩ噸缃紙鍏ㄥ眬鍏变韩鎶藉彇姹狅級"],
+    ["已注册组别", `${state.groups.length}`],
+    ["插件名（用于 bridge API 前缀）", PLUGIN_NAME],
+    ["支持的图片格式", ".jpg / .jpeg / .png / .webp / .bmp / .gif"],
+    ["抽取规则", "随机 + 不重复；跑完一轮自动重置（全局共享抽取池）"],
   ];
   for (const [k, v] of rows) {
     const dt = document.createElement("dt");
@@ -545,9 +545,9 @@ function renderStats(stats) {
   const list = $("#stats-list");
   list.innerHTML = "";
   const top = [
-    ["缁勫埆鏁?, `${stats.group_count}`],
-    ["鍥剧墖鎬绘暟", `${stats.image_total}`],
-    ["鏈疆绱鎶藉彇", `${stats.history_size}`],
+    ["组别数", `${stats.group_count}`],
+    ["图片总数", `${stats.image_total}`],
+    ["本轮累计抽取", `${stats.history_size}`],
   ];
   for (const [k, v] of top) {
     const dt = document.createElement("dt");
@@ -587,9 +587,6 @@ init().catch((err) => {
   console.error(err);
   document.body.insertAdjacentHTML(
     "afterbegin",
-    `<pre style="color:red;padding:12px;">鍒濆鍖栧け璐? ${err.message}</pre>`
+    `<pre style="color:red;padding:12px;">初始化失败: ${err.message}</pre>`
   );
 });
-
-
-

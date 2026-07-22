@@ -1,11 +1,11 @@
 """AstrBot 插件：随机表情包（astrbot_plugin_randommeme）。
 
 功能：
-- 用户发送关键词（精确匹配，前后空格忽略）从对应组别目录抽一张图片。
+- 用户发送关键词从对应组别目录抽一张图片。
 - 同一组别内一整轮抽完才洗牌，全局共享抽取池。
-- 支持多组别 / 别名 / 每个组别独立设置"需要 @/唤醒"。
-- WebUI / Plugin Page 提供组别 CRUD、批量上传、删除图片、重置抽取序列。
-- 帮助类指令: ``随机meme`` / ``随机表情`` / ``包帮助``。
+- 支持多组别 / 别名 / 每个组别独立设置「需要 @/唤醒」。
+- WebUI / Plugin Page 提供组别 CRUD、批量上传等。
+- 聊天精简指令组：表情 帮助 / 列表 / 加 / 新 / 别名。
 """
 
 from __future__ import annotations
@@ -18,20 +18,45 @@ from astrbot.api.star import Context, Star, register
 from astrbot.core import AstrBotConfig
 from astrbot.core.message.components import Image as CompImage, Reply
 from astrbot.core.platform import AstrMessageEvent
+from astrbot.core.star.filter.command import GreedyStr
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 from .core.api import WebApiMixin
+from .core.images import collect_image_components, extract_image_uploads
 from .core.manager import MemeManager
 from .core.storage import is_image_filename
 
 logger = logging.getLogger(__name__)
+
+HELP_TEXT = "\n".join(
+    [
+        "随机表情包 · 指令",
+        "看库 → 表情 列表",
+        "灌图 → 表情 加 <组别>（带图或回复带图）",
+        "新组 → 表情 新 <名称> [别名…]",
+        "改名 → 表情 别名 <组别> <别名…>",
+        "出图 → 直接发送组别名/别名",
+        "帮助 → 表情 帮助",
+        "",
+        "说明：加 / 新 / 别名 为管理指令；开启「仅管理员可管理」后仅 AstrBot 管理员可用。",
+        "出图不受该开关影响。详细管理也可在 WebUI → 随机表情包 页完成。",
+    ]
+)
+
+_UPLOAD_WAIT_SECONDS = 30
+
+
+def _split_tokens(text: str | None) -> list[str]:
+    if not text:
+        return []
+    return [p for p in str(text).strip().split() if p]
 
 
 @register(
     "astrbot_plugin_randommeme",
     "konley",
     "随机抽图表情包插件：关键词触发，按组别从不重复池中抽取一张图片发送",
-    version="1.0.0",
+    version="1.1.0",
 )
 class RandomMemePlugin(Star, WebApiMixin):
     """Top-level Star registering the plugin with AstrBot."""
@@ -42,8 +67,8 @@ class RandomMemePlugin(Star, WebApiMixin):
         gif_support = bool(self.conf.get("gif_support", True))
         exact_match = bool(self.conf.get("exact_match", False))
         self.manager = MemeManager(gif_support=gif_support, exact_match=exact_match)
-        # 冷却跟踪：unified_msg_origin → 上次触发时间戳
         self._last_trigger: dict[str, float] = {}
+        self._upload_wait: dict[str, dict] = {}
         self._register_web_apis()
 
     # --------------------------------------------------------- lifecycle
@@ -66,15 +91,49 @@ class RandomMemePlugin(Star, WebApiMixin):
     def _reply_mode(self) -> bool:
         return bool(self.conf.get("reply_mode", False))
 
-    # --------------------------------------------------------- main hook
+    def _admin_only_manage(self) -> bool:
+        """开启后聊天管理指令仅管理员可用；出图不受影响。WebUI 始终可用。"""
+        return bool(self.conf.get("admin_only_manage", True))
+
+    def _manage_allowed(self, event: AstrMessageEvent) -> bool:
+        if not self._admin_only_manage():
+            return True
+        try:
+            return bool(event.is_admin())
+        except Exception:
+            return False
+
+    def _deny_manage_msg(self) -> str:
+        return (
+            "管理指令仅 AstrBot 管理员可用"
+            "（插件配置「仅管理员可管理」已开启）。出图不受影响。"
+        )
+
+    def _user_key(self, event: AstrMessageEvent) -> str:
+        session = getattr(event, "session_id", "") or ""
+        sender = ""
+        try:
+            sender = event.get_sender_id() or ""
+        except Exception:
+            sender = ""
+        return f"{session}_{sender}"
+
+    # --------------------------------------------------------- 抽图 + 等图入库
 
     @filter.event_message_type(EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
+        async for result in self._try_consume_upload_wait(event):
+            yield result
+            return
+
         text = (getattr(event, "message_str", "") or "").strip()
         if not text or not self._should_handle(event, text):
             return
 
         keyword = self._strip_prefix(text)
+        if keyword == "表情" or keyword.startswith("表情 "):
+            return
+
         group = self.manager.match_group(keyword)
         if not group:
             return
@@ -83,7 +142,6 @@ class RandomMemePlugin(Star, WebApiMixin):
             yield event.plain_result(f"触发 {group.name} 需要 @机器人 或唤醒前缀")
             return
 
-        # ---- CD 冷却检查 ----
         cd = self._cooldown_seconds()
         if cd > 0:
             origin = getattr(event, "unified_msg_origin", "") or ""
@@ -99,7 +157,8 @@ class RandomMemePlugin(Star, WebApiMixin):
         picked = await self.manager.draw(group.name)
         if not picked:
             yield event.plain_result(
-                f"组别 {group.name} 里还没有图片，先去 WebUI 上传几张吧"
+                f"组别 {group.name} 里还没有图片，"
+                f"先用「表情 加 {group.name}」或 WebUI 上传"
             )
             return
 
@@ -112,30 +171,40 @@ class RandomMemePlugin(Star, WebApiMixin):
         else:
             yield event.plain_result(f"图片路径不合法: {picked}")
 
-    # --------------------------------------------------------- command hooks
+    async def _try_consume_upload_wait(self, event: AstrMessageEvent):
+        key = self._user_key(event)
+        state = self._upload_wait.get(key)
+        if not state:
+            return
+        if time.time() > float(state.get("expire", 0)):
+            self._upload_wait.pop(key, None)
+            return
+        if not collect_image_components(event):
+            return
 
-    @filter.command("随机meme", alias={"随机表情", "包帮助"})
+        group_name = str(state.get("group") or "")
+        self._upload_wait.pop(key, None)
+        async for result in self._do_add_images(event, group_name):
+            yield result
+
+    # --------------------------------------------------------- 指令组：表情
+
+    @filter.command_group("表情")
+    def meme_cmd(self):
+        """随机表情包指令组"""
+        pass
+
+    @meme_cmd.command("帮助", alias={"help", "?"})
     async def cmd_help(self, event: AstrMessageEvent):
-        yield event.plain_result(
-            "\n".join(
-                [
-                    "随机表情包 · 使用说明",
-                    "1. 直接发送组别名 → 抽一张图（精确匹配，前后空格忽略）。",
-                    "2. 小工具:",
-                    "   - 随机meme列表：列出所有组别",
-                    "   - 随机meme详情 <组别>：查看组别",
-                    "   - 随机meme重置 [组别]：重置抽取序列（不带组别 = 清空全部）",
-                    "   - 随机meme禁用 <组别> / 随机meme启用 <组别>：开关某个组别",
-                    "3. 详细管理请到 WebUI → 插件 → 随机表情包 页。",
-                ]
-            )
-        )
+        yield event.plain_result(HELP_TEXT)
 
-    @filter.command("随机meme列表", alias={"meme列表", "表情列表"})
-    async def cmd_list_groups(self, event: AstrMessageEvent):
+    @meme_cmd.command("列表", alias={"list", "ls"})
+    async def cmd_list(self, event: AstrMessageEvent):
         groups = self.manager.list_groups()
         if not groups:
-            yield event.plain_result("还没有任何组别，先去 WebUI 创建几个吧。")
+            yield event.plain_result(
+                "还没有任何组别。用「表情 新 <名称>」创建，或去 WebUI。"
+            )
             return
         lines = ["组别列表:"]
         for g in groups:
@@ -143,13 +212,103 @@ class RandomMemePlugin(Star, WebApiMixin):
             alias_text = ", ".join(g.aliases) if g.aliases else "-"
             status = "启用" if g.enabled else "禁用"
             wake = "(需唤醒)" if g.require_wake else ""
-            lines.append(f"- {g.name}{wake} [{status}] 图:{count} | 别名:{alias_text}")
+            lines.append(
+                f"- {g.name}{wake} [{status}] 图:{count} | 别名:{alias_text}"
+            )
         yield event.plain_result("\n".join(lines))
 
-    @filter.command("随机meme详情", alias={"meme详情", "表情详情"})
-    async def cmd_group_detail(self, event: AstrMessageEvent, name: str | None = None):
+    @meme_cmd.command("加", alias={"add"})
+    async def cmd_add(self, event: AstrMessageEvent, group: str = ""):
+        if not self._manage_allowed(event):
+            yield event.plain_result(self._deny_manage_msg())
+            return
+        name = (group or "").strip()
         if not name:
-            yield event.plain_result("用法:随机meme详情 <组别名>")
+            yield event.plain_result(
+                "用法：表情 加 <组别>（可同条带图，或回复一张图，或发完再丢图）"
+            )
+            return
+        if not self.manager.get_group(name):
+            yield event.plain_result(
+                f"未找到组别：{name}。先用「表情 新 {name}」创建。"
+            )
+            return
+
+        uploads = await extract_image_uploads(event)
+        if uploads:
+            async for result in self._do_add_images(event, name, uploads=uploads):
+                yield result
+            return
+
+        key = self._user_key(event)
+        self._upload_wait[key] = {
+            "group": name,
+            "expire": time.time() + _UPLOAD_WAIT_SECONDS,
+        }
+        yield event.plain_result(
+            f"请在 {_UPLOAD_WAIT_SECONDS} 秒内发送要加入「{name}」的图片（可多张）。"
+        )
+
+    @meme_cmd.command("新", alias={"new", "新建"})
+    async def cmd_new(self, event: AstrMessageEvent, rest: GreedyStr):
+        if not self._manage_allowed(event):
+            yield event.plain_result(self._deny_manage_msg())
+            return
+        tokens = _split_tokens(rest)
+        if not tokens:
+            yield event.plain_result("用法：表情 新 <名称> [别名1 别名2 …]")
+            return
+        group_name = tokens[0]
+        aliases = tokens[1:]
+        try:
+            g = await self.manager.create_group(group_name, aliases=aliases)
+        except ValueError as exc:
+            yield event.plain_result(str(exc))
+            return
+        alias_text = ", ".join(g.aliases) if g.aliases else "无"
+        yield event.plain_result(f"已创建组别「{g.name}」，别名：{alias_text}")
+
+    @meme_cmd.command("别名", alias={"alias"})
+    async def cmd_aliases(self, event: AstrMessageEvent, rest: GreedyStr):
+        if not self._manage_allowed(event):
+            yield event.plain_result(self._deny_manage_msg())
+            return
+        tokens = _split_tokens(rest)
+        if not tokens:
+            yield event.plain_result(
+                "用法：表情 别名 <组别> <别名1> [别名2 …]（覆盖该组别全部别名）"
+            )
+            return
+        group_name = tokens[0]
+        aliases = tokens[1:]
+        if not self.manager.get_group(group_name):
+            yield event.plain_result(f"未找到组别：{group_name}")
+            return
+        try:
+            g = await self.manager.update_group(group_name, aliases=aliases)
+        except ValueError as exc:
+            yield event.plain_result(str(exc))
+            return
+        alias_text = ", ".join(g.aliases) if g.aliases else "（已清空）"
+        yield event.plain_result(f"「{g.name}」别名已更新：{alias_text}")
+
+    # --------------------------------------------------------- 旧指令兼容（帮助不再主推）
+
+    @filter.command("随机meme", alias={"随机表情", "包帮助"})
+    async def cmd_help_legacy(self, event: AstrMessageEvent):
+        yield event.plain_result(HELP_TEXT)
+
+    @filter.command("随机meme列表", alias={"meme列表"})
+    async def cmd_list_legacy(self, event: AstrMessageEvent):
+        async for r in self.cmd_list(event):
+            yield r
+
+    @filter.command("随机meme详情", alias={"meme详情", "表情详情"})
+    async def cmd_group_detail(self, event: AstrMessageEvent, name: str = ""):
+        if not name:
+            yield event.plain_result(
+                "用法：随机meme详情 <组别名>（也可直接 表情 列表）"
+            )
             return
         g = self.manager.get_group(name)
         if not g:
@@ -168,7 +327,10 @@ class RandomMemePlugin(Star, WebApiMixin):
         )
 
     @filter.command("随机meme重置", alias={"meme重置", "表情重置"})
-    async def cmd_reset_group(self, event: AstrMessageEvent, name: str | None = None):
+    async def cmd_reset_group(self, event: AstrMessageEvent, name: str = ""):
+        if not self._manage_allowed(event):
+            yield event.plain_result(self._deny_manage_msg())
+            return
         if name:
             g = self.manager.get_group(name)
             if not g:
@@ -181,7 +343,10 @@ class RandomMemePlugin(Star, WebApiMixin):
         yield event.plain_result(f"已重置全部 {count} 个组别的抽取序列。")
 
     @filter.command("随机meme禁用", alias={"meme禁用", "禁用表情"})
-    async def cmd_disable_group(self, event: AstrMessageEvent, name: str | None = None):
+    async def cmd_disable_group(self, event: AstrMessageEvent, name: str = ""):
+        if not self._manage_allowed(event):
+            yield event.plain_result(self._deny_manage_msg())
+            return
         if not name:
             yield event.plain_result("用法:随机meme禁用 <组别名>")
             return
@@ -193,7 +358,10 @@ class RandomMemePlugin(Star, WebApiMixin):
         yield event.plain_result(f"已禁用 {g.name}")
 
     @filter.command("随机meme启用", alias={"meme启用", "启用表情"})
-    async def cmd_enable_group(self, event: AstrMessageEvent, name: str | None = None):
+    async def cmd_enable_group(self, event: AstrMessageEvent, name: str = ""):
+        if not self._manage_allowed(event):
+            yield event.plain_result(self._deny_manage_msg())
+            return
         if not name:
             yield event.plain_result("用法:随机meme启用 <组别名>")
             return
@@ -206,15 +374,37 @@ class RandomMemePlugin(Star, WebApiMixin):
 
     # --------------------------------------------------------- helpers
 
+    async def _do_add_images(
+        self,
+        event: AstrMessageEvent,
+        group_name: str,
+        uploads: list[tuple[str, bytes]] | None = None,
+    ):
+        if uploads is None:
+            uploads = await extract_image_uploads(event)
+        if not uploads:
+            yield event.plain_result("没有识别到图片，请带图发送或回复一张图片。")
+            return
+        try:
+            stored = await self.manager.add_images(group_name, uploads)
+        except ValueError as exc:
+            yield event.plain_result(str(exc))
+            return
+        if not stored:
+            yield event.plain_result("没有可保存的图片（扩展名不支持或内容为空）。")
+            return
+        total = self.manager.image_count(group_name)
+        yield event.plain_result(
+            f"已添加 {len(stored)} 张到「{group_name}」，当前共 {total} 张。"
+        )
+
     def _is_woken(self, event: AstrMessageEvent, text: str) -> bool:
-        """消息是否处于"唤醒"状态（@机器人 或 extra_prefix 触发）。"""
         extra = str(self.conf.get("extra_prefix") or "")
         if extra and text.startswith(extra):
             return True
         return bool(getattr(event, "is_at_or_wake_command", False))
 
     def _should_handle(self, event: AstrMessageEvent, text: str) -> bool:
-        """是否应该处理此消息。"""
         if self._is_woken(event, text):
             return True
         if not bool(self.conf.get("need_prefix", True)):
@@ -227,7 +417,9 @@ class RandomMemePlugin(Star, WebApiMixin):
             return text[len(extra) :].strip()
         return text
 
-    def _build_image_chain(self, path: str, *, event: AstrMessageEvent | None = None) -> list | None:
+    def _build_image_chain(
+        self, path: str, *, event: AstrMessageEvent | None = None
+    ) -> list | None:
         if not is_image_filename(path, gif_support=self.manager.gif_support):
             return None
         chain = [CompImage.fromFileSystem(path)]

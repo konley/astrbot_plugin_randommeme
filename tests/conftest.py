@@ -39,8 +39,19 @@ def _install_stubs() -> None:
         return deco
 
     api_event = types.ModuleType("astrbot.api.event")
+    def _command_group(*args, **kwargs):
+        def deco(fn):
+            # mimic RegisteringCommandable: allow @group.command(...)
+            fn.command = _passthrough
+            fn.group = _command_group
+            fn.custom_filter = _passthrough
+            return fn
+
+        return deco
+
     api_event.filter = types.SimpleNamespace(
         command=_passthrough,
+        command_group=_command_group,
         regex=_passthrough,
         on_llm_request=_passthrough,
         on_decorating_result=_passthrough,
@@ -56,8 +67,8 @@ def _install_stubs() -> None:
     api_star = types.ModuleType("astrbot.api.star")
 
     class _StarBase:
-        def __init__(self, *args, **kwargs):
-            pass
+        def __init__(self, context=None, *args, **kwargs):
+            self.context = context
 
     api_star.Star = _StarBase
     api_star.Context = object
@@ -126,6 +137,23 @@ def _install_stubs() -> None:
 
     astrbot_path.get_astrbot_plugin_data_path = _get_plugin_data_path
 
+    core_star = types.ModuleType("astrbot.core.star")
+    core_star_filter_pkg = types.ModuleType("astrbot.core.star.filter")
+    command_mod = types.ModuleType("astrbot.core.star.filter.command")
+
+    class _GreedyStr(str):
+        """Stub of AstrBot GreedyStr marker."""
+
+    command_mod.GreedyStr = _GreedyStr
+
+    # Web API 层依赖 quart；测试不真正起 HTTP，仅 stub 模块
+    if "quart" not in sys.modules:
+        quart_mod = types.ModuleType("quart")
+        quart_mod.jsonify = lambda *a, **k: a[0] if a else {}
+        quart_mod.request = types.SimpleNamespace()
+        quart_mod.send_file = lambda *a, **k: None
+        sys.modules["quart"] = quart_mod
+
     api_pkg = types.ModuleType("astrbot.api")
     api_pkg.__is_stub__ = True
     sys.modules["astrbot"] = api_pkg
@@ -137,9 +165,10 @@ def _install_stubs() -> None:
     sys.modules["astrbot.core.message"] = core_message
     sys.modules["astrbot.core.message.components"] = core_components
     sys.modules["astrbot.core.platform"] = core_platform
-    sys.modules["astrbot.core.star"] = types.ModuleType("astrbot.core.star")
-    sys.modules["astrbot.core.star.filter"] = core_star_filter
+    sys.modules["astrbot.core.star"] = core_star
+    sys.modules["astrbot.core.star.filter"] = core_star_filter_pkg
     sys.modules["astrbot.core.star.filter.event_message_type"] = event_message_type_mod
+    sys.modules["astrbot.core.star.filter.command"] = command_mod
     sys.modules["astrbot.core.utils"] = core_utils
     sys.modules["astrbot.core.utils.astrbot_path"] = astrbot_path
 

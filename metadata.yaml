@@ -1,7 +1,7 @@
 name: astrbot_plugin_randommeme
 display_name: 随机表情包
-desc: 随机抽取表情包：关键词触发，从组别目录中不重复地抽一张图片发送。支持多组别、别名、需/唤醒开关、WebUI 管理与上传。
-version: 1.0.0
+desc: 随机抽取表情包：关键词触发，从组别目录中不重复地抽一张图片发送。支持多组别、别名、需唤醒开关、WebUI 管理，以及聊天指令（表情 加/新/别名）。
+version: 1.1.0
 author: konley
 repo: https://github.com/konley/astrbot_plugin_randommeme
 support_platforms:

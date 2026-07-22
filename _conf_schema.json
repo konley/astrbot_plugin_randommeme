@@ -1,6 +1,6 @@
 {
     "need_prefix": {
-        "description": "需要 @机器人 或唤醒前缀才触发。关则任何文本直接触发。",
+        "description": "需要 @机器人 或唤醒前缀才触发抽图。关则任何文本直接触发。",
         "type": "bool",
         "default": true
     },
@@ -28,5 +28,11 @@
         "description": "同群/私聊触发冷却秒数。0=不限。",
         "type": "int",
         "default": 0
+    },
+    "admin_only_manage": {
+        "description": "仅管理员可使用聊天管理指令（加/新/别名及兼容的重置启停）。关则所有人可管理。不影响出图；WebUI 始终可用。",
+        "type": "bool",
+        "default": true,
+        "hint": "对应 AstrBot 控制台配置的管理员，不是 QQ 群主/管理。"
     }
 }

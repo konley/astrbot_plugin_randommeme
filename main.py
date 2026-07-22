@@ -6,12 +6,16 @@
 - 支持多组别 / 别名 / 每个组别独立设置「需要 @/唤醒」。
 - WebUI / Plugin Page 提供组别 CRUD、批量上传等。
 - 聊天精简指令组：表情 帮助 / 列表 / 加 / 新 / 别名。
+
+注意：不要使用 ``from __future__ import annotations``。
+AstrBot 的 ``GreedyStr`` 依赖 ``inspect`` 拿到真实类对象（``is GreedyStr``），
+future annotations 会把注解变成字符串，导致只吃第一个参数、后续别名被清空。
 """
 
-from __future__ import annotations
-
 import logging
+import re
 import time
+from typing import Optional
 
 from astrbot.api.event import filter
 from astrbot.api.star import Context, Star, register
@@ -46,17 +50,39 @@ HELP_TEXT = "\n".join(
 _UPLOAD_WAIT_SECONDS = 30
 
 
-def _split_tokens(text: str | None) -> list[str]:
+def _split_tokens(text: Optional[str]) -> list:
     if not text:
         return []
     return [p for p in str(text).strip().split() if p]
+
+
+def _message_tail_after_subcommand(event: AstrMessageEvent, subcommand: str) -> str:
+    """从完整消息里截取「表情 <子命令>」之后的参数（GreedyStr 失效时的兜底）。"""
+    try:
+        raw = event.get_message_str() or ""
+    except Exception:
+        raw = getattr(event, "message_str", "") or ""
+    msg = re.sub(r"\s+", " ", raw.strip())
+    # 去掉常见唤醒前缀 /
+    if msg.startswith("/"):
+        msg = msg[1:].lstrip()
+    prefixes = (
+        f"表情 {subcommand}",
+        f"表情{subcommand}",
+    )
+    for p in prefixes:
+        if msg == p:
+            return ""
+        if msg.startswith(p + " "):
+            return msg[len(p) :].strip()
+    return ""
 
 
 @register(
     "astrbot_plugin_randommeme",
     "konley",
     "随机抽图表情包插件：关键词触发，按组别从不重复池中抽取一张图片发送",
-    version="1.1.0",
+    version="1.1.1",
 )
 class RandomMemePlugin(Star, WebApiMixin):
     """Top-level Star registering the plugin with AstrBot."""
@@ -67,8 +93,8 @@ class RandomMemePlugin(Star, WebApiMixin):
         gif_support = bool(self.conf.get("gif_support", True))
         exact_match = bool(self.conf.get("exact_match", False))
         self.manager = MemeManager(gif_support=gif_support, exact_match=exact_match)
-        self._last_trigger: dict[str, float] = {}
-        self._upload_wait: dict[str, dict] = {}
+        self._last_trigger = {}  # type: dict
+        self._upload_wait = {}  # type: dict
         self._register_web_apis()
 
     # --------------------------------------------------------- lifecycle
@@ -249,12 +275,28 @@ class RandomMemePlugin(Star, WebApiMixin):
             f"请在 {_UPLOAD_WAIT_SECONDS} 秒内发送要加入「{name}」的图片（可多张）。"
         )
 
+    def _resolve_cmd_tail(self, event: AstrMessageEvent, rest, *subcommands: str) -> str:
+        """合并 GreedyStr 与原文截取，取更完整的参数串。
+
+        AstrBot 若未识别 GreedyStr（例如 future annotations 把注解变成字符串），
+        只会把第一个词赋给 rest，后面的别名会丢。此时必须从 message_str 兜底。
+        """
+        from_rest = str(rest or "").strip()
+        from_msg = ""
+        for sub in subcommands:
+            from_msg = _message_tail_after_subcommand(event, sub)
+            if from_msg:
+                break
+        if len(_split_tokens(from_msg)) > len(_split_tokens(from_rest)):
+            return from_msg
+        return from_rest or from_msg
+
     @meme_cmd.command("新", alias={"new", "新建"})
-    async def cmd_new(self, event: AstrMessageEvent, rest: GreedyStr):
+    async def cmd_new(self, event: AstrMessageEvent, rest: GreedyStr = ""):
         if not self._manage_allowed(event):
             yield event.plain_result(self._deny_manage_msg())
             return
-        tokens = _split_tokens(rest)
+        tokens = _split_tokens(self._resolve_cmd_tail(event, rest, "新", "new", "新建"))
         if not tokens:
             yield event.plain_result("用法：表情 新 <名称> [别名1 别名2 …]")
             return
@@ -269,12 +311,12 @@ class RandomMemePlugin(Star, WebApiMixin):
         yield event.plain_result(f"已创建组别「{g.name}」，别名：{alias_text}")
 
     @meme_cmd.command("别名", alias={"alias"})
-    async def cmd_aliases(self, event: AstrMessageEvent, rest: GreedyStr):
+    async def cmd_aliases(self, event: AstrMessageEvent, rest: GreedyStr = ""):
         if not self._manage_allowed(event):
             yield event.plain_result(self._deny_manage_msg())
             return
-        tokens = _split_tokens(rest)
-        if not tokens:
+        tokens = _split_tokens(self._resolve_cmd_tail(event, rest, "别名", "alias"))
+        if len(tokens) < 2:
             yield event.plain_result(
                 "用法：表情 别名 <组别> <别名1> [别名2 …]（覆盖该组别全部别名）"
             )
@@ -378,7 +420,7 @@ class RandomMemePlugin(Star, WebApiMixin):
         self,
         event: AstrMessageEvent,
         group_name: str,
-        uploads: list[tuple[str, bytes]] | None = None,
+        uploads=None,
     ):
         if uploads is None:
             uploads = await extract_image_uploads(event)
@@ -417,9 +459,7 @@ class RandomMemePlugin(Star, WebApiMixin):
             return text[len(extra) :].strip()
         return text
 
-    def _build_image_chain(
-        self, path: str, *, event: AstrMessageEvent | None = None
-    ) -> list | None:
+    def _build_image_chain(self, path, event=None):
         if not is_image_filename(path, gif_support=self.manager.gif_support):
             return None
         chain = [CompImage.fromFileSystem(path)]

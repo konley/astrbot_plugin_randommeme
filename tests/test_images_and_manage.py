@@ -19,10 +19,18 @@ def test_split_tokens():
     assert _split_tokens(None) == []
 
 
+def test_message_tail_after_subcommand():
+    from astrbot_plugin_randommeme.main import _message_tail_after_subcommand
+
+    event = SimpleNamespace(get_message_str=lambda: "/表情 别名 菲比 菌子 bbz")
+    assert _message_tail_after_subcommand(event, "别名") == "菲比 菌子 bbz"
+    event2 = SimpleNamespace(get_message_str=lambda: "表情 新 摸鱼 moyu")
+    assert _message_tail_after_subcommand(event2, "新") == "摸鱼 moyu"
+
+
 def test_help_text_has_short_commands():
     for phrase in ("表情 列表", "表情 加", "表情 新", "表情 别名", "表情 帮助"):
         assert phrase in HELP_TEXT
-
 
 def test_collect_image_components_includes_reply_chain():
     class Image:
@@ -124,3 +132,17 @@ async def test_cmd_new_and_alias_flow(isolated_plugin_data):
     g = plugin.manager.get_group("摸鱼")
     assert g is not None
     assert g.aliases == ["摸鱼一下"]
+
+    # 模拟 GreedyStr 失效：rest 只有组名时，应从 message_str 兜底解析
+    event_msg = SimpleNamespace(
+        plain_result=lambda s: s,
+        is_admin=lambda: True,
+        get_message_str=lambda: "/表情 别名 摸鱼 菌子 bbz",
+    )
+    results = []
+    async for r in plugin.cmd_aliases(event_msg, "摸鱼"):
+        results.append(r)
+    g = plugin.manager.get_group("摸鱼")
+    assert g is not None
+    assert g.aliases == ["菌子", "bbz"]
+    assert any("菌子" in str(x) for x in results)
